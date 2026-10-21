@@ -1,0 +1,25 @@
+{
+  "name": "spirchat",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "hub",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w web",
+    "start": "npm start -w hub",
+    "dev:hub": "npm run dev -w hub",
+    "dev:web": "npm run dev -w web",
+    "test": "node --disable-warning=ExperimentalWarning --test packages/protocol/test/*.test.ts hub/test/*.test.ts",
+    "typecheck": "tsc -p packages/protocol && tsc -p hub && tsc -p web"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
