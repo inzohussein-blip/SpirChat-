@@ -1,0 +1,28 @@
+[Unit]
+Description=SpirChat hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=spirchat
+WorkingDirectory=@APP_DIR@/hub
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning src/main.ts
+Environment=PORT=80
+Environment=HUB_NAME=@HUB_NAME@
+Environment=DATA_DIR=@DATA_DIR@
+Environment=WEB_DIR=@APP_DIR@/web/dist
+Environment=PEERS=@PEERS@
+Environment=ALERT_KEYS=@ALERT_KEYS@
+Environment=CAPTIVE=1
+Environment=MAX_STORE_MB=4096
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=@DATA_DIR@
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
