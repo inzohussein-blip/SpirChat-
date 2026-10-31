@@ -19,7 +19,7 @@ android {
 
     // A fixed release key lets people update without uninstalling (which would wipe their data)
     // and lets them check that an APK is genuine. CI provides it through repository secrets.
-    val keystore = System.getenv("SPIRCHAT_KEYSTORE")?.let(::file)?.takeIf { it.exists() }
+    val keystore = System.getenv("SPIRCHAT_KEYSTORE")?.takeIf { it.isNotBlank() }?.let(::file)?.takeIf { it.exists() }
     signingConfigs {
         if (keystore != null) {
             create("release") {
