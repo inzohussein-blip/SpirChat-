@@ -1,0 +1,295 @@
+{
+ "now": 1790856000000,
+ "identities": {
+  "alice": {
+   "seed": "AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o",
+   "id": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "tag": "vl6iicBkVMQPUT-ziwKtEA"
+  },
+  "bob": {
+   "seed": "AgkQFx4lLDM6QUhPVl1ka3J5gIeOlZyjqrG4v8bN1Ns",
+   "id": "7WMTD-6oR0H6iFG5Pq3_lets0R24GfhlDBJZtBGKMPQ",
+   "tag": "Aj9_ow-eHlRGnti91fItqQ"
+  }
+ },
+ "valid": {
+  "profile": {
+   "v": 1,
+   "kind": "profile",
+   "ts": 1790855940000,
+   "exp": 1806407940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "name": "علي 🌙",
+    "bio": "quote \" backslash \\ tab \t newline \n ctrl \u0001"
+   },
+   "sig": "G3uywc6LtV-uBiZoEWDKiDf-HtEnGtaSRR2PCZyB5yB294T8WQje6_0LhrxCZMBBLJuyMV2hbiISa1uTp7KODA",
+   "nonce": 441,
+   "id": "AB7hgguTrYOcs0bA-QlamTWbASAmvr-6EBr-LY1gDvw"
+  },
+  "post": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM"
+  },
+  "room": {
+   "v": 1,
+   "kind": "room",
+   "ts": 1790855940000,
+   "exp": 1791460740000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "room": "الكرادة-52",
+    "text": "hello"
+   },
+   "sig": "RV8Tmqx2hjNddzPERNMwRHi_bd0B-BZnYIs9uZgKVnMcYyg45T3omZHmvkl7ommiJ2jJNNG-PwqYanPQQ4g_BA",
+   "nonce": 3153,
+   "id": "AA_cdxfiUfiJsrUe2bVgB7R2Pm9yHhLID7qpmn4VlMA"
+  },
+  "sos": {
+   "v": 1,
+   "kind": "sos",
+   "ts": 1790855940000,
+   "exp": 1791028740000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "help",
+    "loc": {
+     "lat": 33.312,
+     "lon": 44.361
+    }
+   },
+   "sig": "1vILzWvaID6ScX0JuoyIEOL094AO1N3wTMY5L79P3JKq6yYGGM-HVwTG-2mKfdT3cqs8P2dNvGayDwp3ZrStCQ",
+   "nonce": 882,
+   "id": "ACjGen3GgMUZ0mXeefMVm20uCoqDscOXdp_SFgLieho"
+  },
+  "sosNegative": {
+   "v": 1,
+   "kind": "sos",
+   "ts": 1790855940000,
+   "exp": 1791028740000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "x",
+    "loc": {
+     "lat": -0.001,
+     "lon": 0
+    }
+   },
+   "sig": "lTagVNVlBqkgnlha28w8Zl_YIiMl_HoKCc9FOEYbtNJHx2KHq0tCOoegSbErz1RZCvnXLb4hwZJ4mz9eu9znAQ",
+   "nonce": 489,
+   "id": "AA253rUIJN_L29uP7vAXRCu8mzFGEplCxsdQWNBnswU"
+  },
+  "alert": {
+   "v": 1,
+   "kind": "alert",
+   "ts": 1790855940000,
+   "exp": 1791115140000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "title": "t",
+    "text": "",
+    "level": "danger"
+   },
+   "sig": "iQh2J7kJgm4IAIk4vJfdKfFIl1UTV9BI8PpLhReWcq-KhQ356smpC3tRnUh-q3IOWtNzbQlvnofLAp9Wo14_AA",
+   "nonce": 0,
+   "id": "4naYT2IgQXjir1prUxg7X-6_Vt9ShZ5dcVgH_QOWvO0"
+  },
+  "dm": {
+   "v": 1,
+   "kind": "dm",
+   "ts": 1790855940000,
+   "exp": 1792065540000,
+   "to": "Aj9_ow-eHlRGnti91fItqQ",
+   "epk": "yK0JBjG4Bjv46anqpWxsoUoxQ8CMIp_uPi6nYUzA4kU",
+   "ct": "FFs_1vwb6iMjbpiPQp07EzpzEnuizJ4Tcxz5Sc8TZEDbNapxgjc9utKIJJfv8KIBCICJDkOZyHdTIgiAHNrJ3iFxc4d-qSPOHv4yOeBtSQrdSvY2uZ0edPnBYtX51j2DpnJELvu0kWJ5qbaZzq9kXH9mkqwUuHIvXbvemKnetouOWXPUj00TG7ShRnlkTemcXZl9n_4qeK3oKc4VsI6zmy2H9xaGWStk-4ma3QHXDpiAtw2dJMJ-1KQpnF9vECRPmC-87cxa1QMPgX2RhVUU1JQDfnFeYlnc_Jxk_edujfKWPSMP9YHypNex_Zq8dYaT39r-HU8gnW5BVU8",
+   "nonce": 11870,
+   "id": "AAfvUdT62r_cNcFtmOlBwScc9EIqZlJ7N5RDCY49OCM"
+  }
+ },
+ "invalid": {
+  "editedBody": {
+   "v": 1,
+   "kind": "room",
+   "ts": 1790855940000,
+   "exp": 1791460740000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "room": "الكرادة-52",
+    "text": "HELLO"
+   },
+   "sig": "RV8Tmqx2hjNddzPERNMwRHi_bd0B-BZnYIs9uZgKVnMcYyg45T3omZHmvkl7ommiJ2jJNNG-PwqYanPQQ4g_BA",
+   "nonce": 3153,
+   "id": "AA_cdxfiUfiJsrUe2bVgB7R2Pm9yHhLID7qpmn4VlMA"
+  },
+  "otherAuthor": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "7WMTD-6oR0H6iFG5Pq3_lets0R24GfhlDBJZtBGKMPQ",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM"
+  },
+  "wrongNonce": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 272,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM"
+  },
+  "wrongId": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AA_cdxfiUfiJsrUe2bVgB7R2Pm9yHhLID7qpmn4VlMA"
+  },
+  "extendedExp": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940001,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM"
+  },
+  "extraField": {
+   "v": 1,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM",
+   "extra": 1
+  },
+  "badVersion": {
+   "v": 2,
+   "kind": "post",
+   "ts": 1790855940000,
+   "exp": 1793447940000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "مرحبا بغداد",
+    "thumb": "data:image/webp;base64,AAAA"
+   },
+   "sig": "7HzRqGgnqHtaVLuPbeM5La3hM2c5m_ODgQ3kdHctPCIJtmCa9R0vG14ZIZ6eNRTKLXcDV9LFYXRnKlT79Sv9Bg",
+   "nonce": 271,
+   "id": "AANICT6lDQZdFHgv8cEvmLwuI2fjMegFngb8Xt3p9VM"
+  },
+  "dmWithBody": {
+   "v": 1,
+   "kind": "dm",
+   "ts": 1790855940000,
+   "exp": 1792065540000,
+   "to": "Aj9_ow-eHlRGnti91fItqQ",
+   "epk": "yK0JBjG4Bjv46anqpWxsoUoxQ8CMIp_uPi6nYUzA4kU",
+   "ct": "FFs_1vwb6iMjbpiPQp07EzpzEnuizJ4Tcxz5Sc8TZEDbNapxgjc9utKIJJfv8KIBCICJDkOZyHdTIgiAHNrJ3iFxc4d-qSPOHv4yOeBtSQrdSvY2uZ0edPnBYtX51j2DpnJELvu0kWJ5qbaZzq9kXH9mkqwUuHIvXbvemKnetouOWXPUj00TG7ShRnlkTemcXZl9n_4qeK3oKc4VsI6zmy2H9xaGWStk-4ma3QHXDpiAtw2dJMJ-1KQpnF9vECRPmC-87cxa1QMPgX2RhVUU1JQDfnFeYlnc_Jxk_edujfKWPSMP9YHypNex_Zq8dYaT39r-HU8gnW5BVU8",
+   "nonce": 11870,
+   "id": "AAfvUdT62r_cNcFtmOlBwScc9EIqZlJ7N5RDCY49OCM",
+   "body": {}
+  },
+  "expired": {
+   "v": 1,
+   "kind": "sos",
+   "ts": 1790855990000,
+   "exp": 1790855995000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "old"
+   },
+   "sig": "LyXrtFHPLP1KqMQ3Kk3mCQQKxwiv3kIIYJg4-sZvweERCntmWs_pSPrAzw_ptpTCRn_n7FgfJh0wMwQMo8kkCw",
+   "nonce": 1029,
+   "id": "ABym7Ao5PNgmufLO4F7C1KTkUSHt1HeyQErwf3nfhuU"
+  },
+  "future": {
+   "v": 1,
+   "kind": "sos",
+   "ts": 1791115200000,
+   "exp": 1791288000000,
+   "author": "5AMJmM_VrRcjwWn5VqoLnrhhm1mSvWEsKvQo68efjfA",
+   "body": {
+    "text": "later"
+   },
+   "sig": "LztoXyA-oGndnLFLUdsx4uvP_iwFJtR3yUOBe1SXLqcNVxAvHmF7kWV-z-qSI62x2xYPS34JGITA1oWdAQtUCw",
+   "nonce": 75,
+   "id": "ACiJ9yQhoBKjl-u6aaUeVnortM55PfrWJLCWsEXCrGk"
+  }
+ },
+ "canonical": [
+  {
+   "value": {
+    "b": 1,
+    "a": [
+     true,
+     null,
+     "x"
+    ]
+   },
+   "json": "{\"a\":[true,null,\"x\"],\"b\":1}"
+  },
+  {
+   "value": {
+    "s": "\"\\/\b\f\n\r\t\u0000\u001f é 😀 \ud800"
+   },
+   "json": "{\"s\":\"\\\"\\\\/\\b\\f\\n\\r\\t\\u0000\\u001f é 😀 \\ud800\"}"
+  },
+  {
+   "value": {
+    "n": [
+     0,
+     0,
+     1,
+     -1,
+     1.5,
+     0.001,
+     1e-7,
+     123456789012,
+     1e+21,
+     33.312,
+     -44.361
+    ]
+   },
+   "json": "{\"n\":[0,0,1,-1,1.5,0.001,1e-7,123456789012,1e+21,33.312,-44.361]}"
+  }
+ ]
+}

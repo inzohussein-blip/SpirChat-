@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "SpirChat"
-include(":app")
+include(":app", ":engine")

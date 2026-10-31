@@ -13,6 +13,7 @@
     "dev:hub": "npm run dev -w hub",
     "dev:web": "npm run dev -w web",
     "test": "node --disable-warning=ExperimentalWarning --test packages/protocol/test/*.test.ts hub/test/*.test.ts",
+    "vectors": "node packages/protocol/scripts/vectors.ts > packages/protocol/test/vectors.json",
     "typecheck": "tsc -p packages/protocol && tsc -p hub && tsc -p web"
   },
   "devDependencies": {

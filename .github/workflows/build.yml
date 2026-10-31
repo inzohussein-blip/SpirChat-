@@ -33,6 +33,9 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Engine tests (Kotlin, against the real hub)
+        working-directory: android
+        run: ./gradlew :engine:test --no-daemon --stacktrace
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
