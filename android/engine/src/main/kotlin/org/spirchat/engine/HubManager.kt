@@ -1,7 +1,9 @@
 package org.spirchat.engine
 
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -41,6 +43,8 @@ class HubManager(
     private inner class Slot(val internet: Boolean) {
         var socket: WebSocket? = null
         var session: HubSession? = null
+        var client: OkHttpClient? = null
+        var blobsSynced = false
         var url: String? = null
         var retryMs = 1000L
         var candidateIdx = 0
@@ -61,6 +65,8 @@ class HubManager(
             }
             val target = list[candidateIdx % list.size]
             url = if (internet) url else target
+            this.client = client
+            blobsSynced = false
             var opened = false
             val ws = client.newWebSocket(Request.Builder().url(target).build(), object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -68,7 +74,13 @@ class HubManager(
                         if (gen != generation) return@execute webSocket.cancel().let { }
                         opened = true
                         retryMs = 1000
-                        val s = HubSession(engine, httpUrl(target), { webSocket.send(it) }) { onChange() }
+                        val s = HubSession(engine, httpUrl(target), { webSocket.send(it) }) { session ->
+                            if (session.state == HubSession.State.ONLINE && !blobsSynced) {
+                                blobsSynced = true
+                                http.execute { uploadBlobs(client, session.url) }
+                            }
+                            onChange()
+                        }
                         session = s
                         s.open()
                         onChange()
@@ -142,6 +154,59 @@ class HubManager(
     private val local = Slot(internet = false)
     private val internet = LinkedHashMap<String, Slot>()
 
+    /** Image uploads and downloads, off the connection thread. */
+    private val http = Executors.newFixedThreadPool(2) { r -> Thread(r, "hub-http").apply { isDaemon = true } }
+
+    private val blobFetcher: (String) -> Unit = { id ->
+        timer.execute {
+            val online = (listOf(local) + internet.values).filter { it.session?.state == HubSession.State.ONLINE }
+            for (slot in online) {
+                val c = slot.client ?: continue
+                val base = slot.session?.url ?: continue
+                http.execute { fetchBlob(c, base, id) }
+            }
+        }
+    }
+
+    init {
+        engine.addBlobFetcher(blobFetcher)
+    }
+
+    private val jsonType = "application/json".toMediaType()
+
+    /** Uploads recent images the hub does not have yet, so others can fetch them on demand. */
+    private fun uploadBlobs(client: OkHttpClient, base: String) {
+        try {
+            val ids = engine.store.blobIds(200)
+            if (ids.isEmpty()) return
+            val body = Json.obj("ids" to Json.Arr(ids.map(Json::Str))).stringify().toRequestBody(jsonType)
+            val missing = client.newCall(Request.Builder().url("$base/api/blobs/missing").post(body).build()).execute().use { r ->
+                if (!r.isSuccessful) return
+                ((Json.parse(r.body!!.string()) as Json.Obj)["missing"] as? Json.Arr)?.items?.mapNotNull { (it as? Json.Str)?.value }
+            } ?: return
+            for (id in missing) {
+                val (mime, data) = engine.store.getBlob(id) ?: continue
+                client.newCall(Request.Builder().url("$base/api/blobs/$id").put(data.toRequestBody(mime.toMediaType())).build())
+                    .execute().close()
+            }
+        } catch (e: Exception) {
+            System.err.println("blob upload to $base failed: $e")
+        }
+    }
+
+    private fun fetchBlob(client: OkHttpClient, base: String, id: String) {
+        if (engine.store.hasBlob(id)) return
+        try {
+            client.newCall(Request.Builder().url("$base/api/blobs/$id").build()).execute().use { r ->
+                if (!r.isSuccessful) return
+                val mime = r.header("content-type")?.substringBefore(';')?.trim() ?: return
+                engine.putBlob(id, mime, r.body!!.bytes())
+            }
+        } catch (e: Exception) {
+            System.err.println("blob fetch from $base failed: $e")
+        }
+    }
+
     fun start(initial: Config) = timer.execute {
         config = initial
         local.restart()
@@ -179,6 +244,8 @@ class HubManager(
     fun status(): List<Status> = (listOf(local) + internet.values).map { it.status() }
 
     fun shutdown() {
+        engine.removeBlobFetcher(blobFetcher)
+        http.shutdown()
         timer.execute {
             local.stop()
             internet.values.forEach { it.stop() }

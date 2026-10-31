@@ -8,6 +8,7 @@ import {
   type Envelope,
   identityFromSeed,
   mailboxTag,
+  summarize,
   validateEnvelope,
 } from '../src/index.ts';
 
@@ -63,6 +64,10 @@ console.log(
       valid,
       invalid,
       canonical: canonical.map((value) => ({ value, json: canonicalJson(value) })),
+      summary: (() => {
+        const items = [...Object.values(valid), invalid.expired as Envelope, invalid.future as Envelope].map((e) => ({ id: e.id, ts: e.ts }));
+        return { items, buckets: summarize(items) };
+      })(),
     },
     null,
     1,

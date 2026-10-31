@@ -2,7 +2,17 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { type ClientMessage, type HubMessage, MAX_HAVE_IDS, type SyncPage } from '@spirchat/protocol';
+import { createHash } from 'node:crypto';
+import {
+  b64u,
+  type ClientMessage,
+  type HubMessage,
+  isBucketList,
+  MAX_HAVE_IDS,
+  MAX_MEDIA_BYTES,
+  summarize,
+  type SyncPage,
+} from '@spirchat/protocol';
 import { type Hub, RateLimiter } from './hub.ts';
 
 const MIME: Record<string, string> = {
@@ -43,16 +53,22 @@ function json(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage): Promise<string> {
+async function readBytes(req: IncomingMessage, max = MAX_BODY): Promise<Buffer> {
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new Error('body too large');
+    if (size > max) throw new Error('body too large');
     chunks.push(chunk as Buffer);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
 }
+
+const readBody = async (req: IncomingMessage) => (await readBytes(req)).toString('utf8');
+
+const BLOB_PATH = /^\/api\/blobs\/([A-Za-z0-9_-]{43})$/;
+const BLOB_TTL = 60 * 86_400_000;
+const MEDIA_TYPES = new Set(['image/webp', 'image/jpeg']);
 
 /** Parses newline-delimited JSON or a JSON array of envelopes. */
 function parseEnvelopes(text: string): unknown[] {
@@ -71,6 +87,7 @@ export function createHubServer(hub: Hub): Server {
     return fwd || req.socket.remoteAddress || '?';
   };
   const importLimiter = new RateLimiter(20, 60_000);
+  const blobLimiter = new RateLimiter(60, 60_000);
 
   function serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
     let file = normalize(join(config.webDir, decodeURIComponent(path)));
@@ -99,6 +116,53 @@ export function createHubServer(hub: Hub): Server {
       if (CAPTIVE_PROBES.has(path) || foreign) {
         res.writeHead(302, { location: 'http://spirchat.local/' });
         return res.end();
+      }
+    }
+
+    if (req.method === 'OPTIONS' && path.startsWith('/api/')) {
+      res.writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, PUT',
+        'access-control-allow-headers': 'content-type',
+        'access-control-max-age': '86400',
+      });
+      return res.end();
+    }
+
+    const blob = BLOB_PATH.exec(path);
+    if (blob && (req.method === 'GET' || req.method === 'HEAD')) {
+      const b = store.getBlob(blob[1]!);
+      if (!b) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, {
+        'content-type': b.mime,
+        'content-length': b.data.length,
+        'cache-control': 'public, max-age=31536000, immutable',
+        'access-control-allow-origin': '*',
+      });
+      return res.end(req.method === 'HEAD' ? undefined : b.data);
+    }
+    if (blob && req.method === 'PUT') {
+      if (!blobLimiter.allow(clientIp(req))) return json(res, 429, { error: 'slow down' });
+      const mime = String(req.headers['content-type'] ?? '').split(';')[0]!.trim();
+      if (!MEDIA_TYPES.has(mime)) return json(res, 415, { error: 'unsupported media type' });
+      let data: Buffer;
+      try {
+        data = await readBytes(req, MAX_MEDIA_BYTES);
+      } catch {
+        return json(res, 413, { error: 'too large' });
+      }
+      // Content-addressed: the ID must be the hash of the bytes, so nobody can swap an image.
+      if (b64u(createHash('sha256').update(data).digest()) !== blob[1]) return json(res, 400, { error: 'hash mismatch' });
+      store.putBlob(blob[1]!, mime, data, Date.now() + BLOB_TTL);
+      return json(res, 200, { ok: true });
+    }
+    if (path === '/api/blobs/missing' && req.method === 'POST') {
+      try {
+        const { ids } = JSON.parse(await readBody(req)) as { ids?: unknown };
+        const list = Array.isArray(ids) ? ids.filter((i): i is string => typeof i === 'string').slice(0, 1000) : [];
+        return json(res, 200, { missing: store.missingBlobs(list) });
+      } catch {
+        return json(res, 400, { error: 'bad request' });
       }
     }
 
@@ -226,6 +290,11 @@ export function createHubServer(hub: Hub): Server {
           unsubscribe = hub.subscribe((seq, env) => send({ t: 'env', seq, env }));
           const since = msg.hubId === hub.id && Number.isSafeInteger(msg.since) ? msg.since! : 0;
           catchUp(since).catch((e: unknown) => console.error('catch-up failed', e));
+          return;
+        }
+        case 'sum': {
+          if (!isBucketList(msg.buckets)) return;
+          send({ t: 'sum', buckets: summarize(store.liveIds()) });
           return;
         }
         case 'have': {

@@ -202,6 +202,20 @@ class MainActivity : ComponentActivity() {
             else -> ""
         }
 
+        /** "mime;base64" if the image is here; otherwise "" and nearby phones and hubs are asked for it. */
+        @JavascriptInterface
+        fun getBlob(id: String): String {
+            val (mime, data) = Core.store.getBlob(id) ?: run {
+                Core.engine.requestBlob(id)
+                return ""
+            }
+            return mime + ";" + android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP)
+        }
+
+        @JavascriptInterface
+        fun putBlob(id: String, mime: String, base64: String): Boolean =
+            Core.engine.putBlob(id, mime, android.util.Base64.decode(base64, android.util.Base64.DEFAULT))
+
         @JavascriptInterface
         fun delivered(idsJson: String): String {
             val ids = (Json.parse(idsJson) as? Json.Arr)?.items?.mapNotNull { (it as? Json.Str)?.value }.orEmpty()

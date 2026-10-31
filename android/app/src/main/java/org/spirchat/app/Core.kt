@@ -62,6 +62,7 @@ object Core : Mesh.Listener {
             envelopeListeners.forEach { it(env, source) }
             changed()
         }
+        engine.addBlobListener { changed() }
         hubs = HubManager(engine, { wifiClient }, internetClient, ::changed)
         watchWifi()
         hubs.start(hubConfig())

@@ -57,4 +57,12 @@ class VectorsTest {
         )
         for ((d, s) in cases) assertEquals(s, Json.jsNumber(d), "for $d")
     }
+
+    @Test
+    fun summariesMatchJavaScript() {
+        val sum = vectors.obj("summary")!!
+        val items = (sum["items"] as Json.Arr).items.map { (it as Json.Obj).let { o -> o.str("id")!! to o.long("ts")!! } }
+        assertEquals(Summary.fromJson(sum["buckets"]), Summary.summarize(items))
+        assertEquals(sum["buckets"]!!.stringify(), Summary.toJson(Summary.summarize(items)).stringify())
+    }
 }

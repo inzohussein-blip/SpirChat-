@@ -95,3 +95,31 @@ test('fingerprint is stable and short', () => {
   assert.equal(fingerprint(a.id), fingerprint(a.id));
   assert.match(fingerprint(a.id), /^\d{5}( \d{5}){5}$/);
 });
+
+test('summaries agree on equal sets and isolate the differing day', async () => {
+  const { summarize, differingDays, dayOf } = await import('../src/index.ts');
+  const a = newIdentity();
+  const day = 86_400_000;
+  const now = Date.now();
+  const envs = [0, 0, 1, 2].map((d, i) => createSigned(a, 'room', { room: 'r', text: `m${i}` }, { now: now - d * day }));
+  const sumA = summarize(envs);
+  assert.equal(sumA.length, 3);
+  assert.deepEqual(differingDays(sumA, summarize([...envs].reverse())), []);
+  const fewer = summarize(envs.slice(1));
+  assert.deepEqual(differingDays(sumA, fewer), [dayOf(now)]);
+  assert.deepEqual(differingDays(fewer, sumA), [dayOf(now)]);
+});
+
+test('posts may reference media and declare an area', async () => {
+  const { areasOverlap } = await import('../src/index.ts');
+  const a = newIdentity();
+  const media = { id: 'A'.repeat(43), size: 1234, mime: 'image/webp' as const };
+  const env = createSigned(a, 'post', { text: '', media, area: 'baghdad/الكرادة' });
+  assert.deepEqual(validateEnvelope(env), { ok: true });
+  assert.throws(() => createSigned(a, 'post', { text: 'x', media: { ...media, size: 5_000_000 } }));
+  assert.throws(() => createSigned(a, 'post', { text: 'x', area: 'bad area!' }));
+  assert.ok(areasOverlap('baghdad', 'baghdad/karrada'));
+  assert.ok(areasOverlap('baghdad/karrada', undefined));
+  assert.ok(!areasOverlap('baghdad/karrada', 'basra'));
+  assert.ok(!areasOverlap('baghdad/karrada', 'baghdad/mansour'));
+});

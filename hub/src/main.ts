@@ -8,6 +8,13 @@ const config = loadConfig();
 const hub = new Hub(config);
 const server = createHubServer(hub);
 
+const denyTimer = setInterval(() => {
+  if (hub.denyFileChanged()) {
+    hub.reloadDenyList();
+    console.log('deny list reloaded');
+  }
+}, 60_000);
+
 const prune = () => {
   const n = hub.store.prune(config.maxStoreBytes);
   if (n) console.log(`pruned ${n} envelopes`);
@@ -23,6 +30,7 @@ server.listen(config.port, config.host, () => {
 
 const shutdown = () => {
   clearInterval(pruneTimer);
+  clearInterval(denyTimer);
   stopPeers();
   server.close(() => {
     hub.store.close();

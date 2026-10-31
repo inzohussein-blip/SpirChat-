@@ -1,4 +1,5 @@
 plugins {
+    `java-library`
     id("org.jetbrains.kotlin.jvm")
 }
 
@@ -14,7 +15,8 @@ kotlin {
 
 dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Part of the engine's API (HubManager takes OkHttpClients), so the app sees it too.
+    api("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation(kotlin("test"))
 }
 

@@ -18,6 +18,12 @@ export interface Config {
   captive: boolean;
   /** Behind a reverse proxy (internet hubs): take the client address from X-Forwarded-For. */
   trustProxy: boolean;
+  /** Area this hub serves, e.g. "baghdad/karrada"; '' serves every area (internet hubs). */
+  area: string;
+  /** Authors whose envelopes this hub refuses (also read from DATA_DIR/deny.txt). */
+  denyKeys: string[];
+  /** Max envelopes per author per kind per day; unlisted kinds are unlimited. */
+  quotas: Record<string, number>;
 }
 
 const list = (v: string | undefined) =>
@@ -42,5 +48,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxStoreBytes: Number(env.MAX_STORE_MB ?? 2048) * 1024 * 1024,
     captive: env.CAPTIVE === '1',
     trustProxy: env.TRUST_PROXY === '1',
+    area: (env.HUB_AREA ?? '').trim().toLowerCase(),
+    denyKeys: list(env.DENY_KEYS),
+    quotas: {
+      post: Number(env.QUOTA_POST ?? 30),
+      room: Number(env.QUOTA_ROOM ?? 300),
+      profile: Number(env.QUOTA_PROFILE ?? 10),
+      sos: Number(env.QUOTA_SOS ?? 5),
+    },
   };
 }

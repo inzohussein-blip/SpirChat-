@@ -46,15 +46,34 @@ export interface ProfileBody {
   name: string;
   bio?: string;
 }
+/**
+ * Where an envelope is relevant: a path of slugs from wide to narrow, e.g. "baghdad" or
+ * "baghdad/karrada". Hubs serving one area do not store envelopes for unrelated areas, so
+ * local chatter does not flood the whole country. Absent means everywhere.
+ */
+export type Area = string;
+
+/** A full-size image stored and fetched separately from the envelope that references it. */
+export interface MediaRef {
+  /** base64url SHA-256 of the bytes: content-addressed, so any hub or phone can serve it. */
+  id: string;
+  size: number;
+  mime: 'image/webp' | 'image/jpeg';
+}
+
 export interface PostBody {
   text: string;
-  /** data: URL of a compressed image. */
+  /** Inline data: URL of a compressed image (v1 posts; new posts use `media`). */
   image?: string;
-  /** Small data: URL preview, sent over slow links instead of `image`. */
+  /** Full image, fetched on demand by its hash. */
+  media?: MediaRef;
+  /** Small data: URL preview that always travels with the post. */
   thumb?: string;
+  area?: Area;
 }
 export interface RoomBody {
   room: string;
+  area?: Area;
   text: string;
 }
 export interface AlertBody {
@@ -63,6 +82,7 @@ export interface AlertBody {
   level: 'info' | 'warning' | 'danger';
 }
 export interface SosBody {
+  area?: Area;
   text: string;
   /** Rounded coordinates, only if the user chose to share them. */
   loc?: { lat: number; lon: number };
@@ -194,6 +214,39 @@ const isStr = (v: unknown, max: number, min = 0): v is string =>
   typeof v === 'string' && v.length >= min && v.length <= max;
 const isDataUrl = (v: unknown, max: number) => isStr(v, max) && /^data:image\/(webp|jpeg|png);base64,/.test(v);
 
+export const MAX_MEDIA_BYTES = 1_000_000;
+const AREA = /^[\p{L}\p{N}_-]{1,32}(\/[\p{L}\p{N}_-]{1,32}){0,3}$/u;
+
+export const isArea = (v: unknown): v is Area => isStr(v, 100, 1) && AREA.test(v);
+
+function isMedia(v: unknown): v is MediaRef {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const m = v as Record<string, unknown>;
+  return (
+    Object.keys(m).every((k) => k === 'id' || k === 'size' || k === 'mime') &&
+    isStr(m.id, 43, 43) &&
+    /^[A-Za-z0-9_-]+$/.test(m.id) &&
+    Number.isSafeInteger(m.size) &&
+    (m.size as number) > 0 &&
+    (m.size as number) <= MAX_MEDIA_BYTES &&
+    (m.mime === 'image/webp' || m.mime === 'image/jpeg')
+  );
+}
+
+/** Whether two areas overlap (one contains the other); envelopes without an area go everywhere. */
+export function areasOverlap(a: Area | undefined, b: Area | undefined): boolean {
+  if (!a || !b) return true;
+  const x = a.toLowerCase().split('/');
+  const y = b.toLowerCase().split('/');
+  return x.slice(0, Math.min(x.length, y.length)).every((seg, i) => seg === y[i]);
+}
+
+/** The `area` an envelope declares, if any. */
+export function areaOf(env: Envelope): Area | undefined {
+  const a = (env.body as { area?: unknown } | undefined)?.area;
+  return typeof a === 'string' ? a : undefined;
+}
+
 export function validateBody(kind: Kind, body: unknown): string | null {
   if (kind === 'dm') return body === undefined ? null : 'dm must not have a body';
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return 'body must be an object';
@@ -207,11 +260,14 @@ export function validateBody(kind: Kind, body: unknown): string | null {
       if (!isStr(b.text, 2000)) return 'post.text too long';
       if (b.image !== undefined && !isDataUrl(b.image, 240_000)) return 'post.image invalid';
       if (b.thumb !== undefined && !isDataUrl(b.thumb, 12_000)) return 'post.thumb invalid';
-      if (!b.text && !b.image) return 'post is empty';
+      if (b.media !== undefined && !isMedia(b.media)) return 'post.media invalid';
+      if (b.area !== undefined && !isArea(b.area)) return 'post.area invalid';
+      if (!b.text && !b.image && !b.media) return 'post is empty';
       return null;
     case 'room':
       if (!isStr(b.room, 32, 1) || !/^[\p{L}\p{N}_-]+$/u.test(b.room)) return 'room name invalid';
       if (!isStr(b.text, 2000, 1)) return 'room.text must be 1-2000 chars';
+      if (b.area !== undefined && !isArea(b.area)) return 'room.area invalid';
       return null;
     case 'alert':
       if (!isStr(b.title, 100, 1) || !isStr(b.text, 1000)) return 'alert text invalid';
@@ -219,6 +275,7 @@ export function validateBody(kind: Kind, body: unknown): string | null {
       return null;
     case 'sos': {
       if (!isStr(b.text, 280, 1)) return 'sos.text must be 1-280 chars';
+      if (b.area !== undefined && !isArea(b.area)) return 'sos.area invalid';
       if (b.loc === undefined) return null;
       const loc = b.loc as Record<string, unknown> | null;
       const ok =

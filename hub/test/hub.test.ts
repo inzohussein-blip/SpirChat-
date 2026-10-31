@@ -199,3 +199,67 @@ test('captive portal probes redirect to the app', async () => {
   const info = await fetch(`${http}/api/info`);
   assert.equal(info.status, 200);
 });
+
+test('images are stored by hash, served, and copied between peer hubs', async () => {
+  const { createHash } = await import('node:crypto');
+  const { b64u } = await import('@spirchat/protocol');
+  const one = await startHub();
+  const two = await startHub();
+  const bytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 5]);
+  const id = b64u(createHash('sha256').update(bytes).digest());
+  const put = (url: string, body: Uint8Array, type = 'image/webp') =>
+    fetch(`${url}/api/blobs/${id}`, { method: 'PUT', body: Buffer.from(body), headers: { 'content-type': type } });
+
+  assert.equal((await put(one.http, new Uint8Array([9, 9]))).status, 400, 'hash must match');
+  assert.equal((await put(one.http, bytes, 'text/html')).status, 415);
+  assert.equal((await put(one.http, bytes)).status, 200);
+  const got = await fetch(`${one.http}/api/blobs/${id}`);
+  assert.equal(got.headers.get('content-type'), 'image/webp');
+  assert.deepEqual(new Uint8Array(await got.arrayBuffer()), bytes);
+  const missing = await fetch(`${one.http}/api/blobs/missing`, { method: 'POST', body: JSON.stringify({ ids: [id, 'B'.repeat(43)] }) });
+  assert.deepEqual(await missing.json(), { missing: ['B'.repeat(43)] });
+
+  const post = createSigned(newIdentity(), 'post', { text: 'صورة', media: { id, size: bytes.length, mime: 'image/webp' } });
+  assert.ok(one.hub.accept(post).ok);
+  assert.equal(await pullFromPeer(two.hub, one.http), 1);
+  assert.deepEqual(two.hub.store.missingBlobs([id]), [], 'peer hub fetched the image');
+});
+
+test('summaries let a client skip offering what the hub already has', async () => {
+  const { summarize, differingDays } = await import('@spirchat/protocol');
+  const { hub, ws } = await startHub();
+  const a = newIdentity();
+  const env = createSigned(a, 'room', { room: 'r', text: 'x' });
+  assert.ok(hub.accept(env).ok);
+  const c = await connect(ws);
+  c.send({ t: 'hello' });
+  await c.next((m) => m.t === 'synced');
+  c.send({ t: 'sum', buckets: summarize([env]) });
+  const reply = await c.next<Extract<HubMessage, { t: 'sum' }>>((m) => m.t === 'sum');
+  assert.deepEqual(differingDays(summarize([env]), reply.buckets), []);
+  c.close();
+});
+
+test('hubs enforce their area, deny list and per-author daily quotas', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'spirchat-'));
+  const spammer = newIdentity();
+  const writer = newIdentity();
+  writeFileSync(join(dataDir, 'deny.txt'), `# blocked\n${spammer.id}\n`);
+  const { hub } = await startHub({ dataDir, area: 'baghdad', quotas: { room: 2 } });
+  hub.reloadDenyList();
+
+  assert.equal(hub.accept(createSigned(writer, 'post', { text: 'x', area: 'basra' })).ok, false);
+  assert.ok(hub.accept(createSigned(writer, 'post', { text: 'x', area: 'baghdad/karrada' })).ok);
+  assert.ok(hub.accept(createSigned(writer, 'post', { text: 'no area' })).ok);
+
+  assert.deepEqual(hub.accept(createSigned(spammer, 'post', { text: 'spam' })), {
+    ok: false,
+    error: 'author blocked on this hub',
+  });
+
+  for (let i = 0; i < 2; i++) assert.ok(hub.accept(createSigned(writer, 'room', { room: 'r', text: `${i}` })).ok);
+  assert.deepEqual(hub.accept(createSigned(writer, 'room', { room: 'r', text: 'third' })), {
+    ok: false,
+    error: 'daily quota reached',
+  });
+});

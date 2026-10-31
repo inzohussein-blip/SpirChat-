@@ -100,4 +100,30 @@ class HubIntegrationTest {
         m2.shutdown()
         assertTrue(store.getMeta("hubcursor:http://127.0.0.1:$port")!!.endsWith("|3"))
     }
+
+    @Test
+    fun imagesTravelThroughTheHubOnDemand() {
+        val bytes = ByteArray(2000) { (it * 31).toByte() }
+        val id = B64u.encode(Protocol.sha256(bytes))
+        val author = Engine(MemoryStore())
+        assertTrue(author.putBlob(id, "image/jpeg", bytes))
+        val m1 = manager(author, internet = false)
+        Fixtures.eventually(message = "uploaded") {
+            try {
+                java.net.URL("http://127.0.0.1:$port/api/blobs/$id").openConnection().let {
+                    (it as java.net.HttpURLConnection).responseCode == 200
+                }
+            } catch (_: Exception) {
+                false
+            }
+        }
+        val reader = Engine(MemoryStore())
+        val m2 = manager(reader, internet = true)
+        Fixtures.eventually(message = "reader online") { m2.status().any { it.state == "online" } }
+        reader.requestBlob(id)
+        Fixtures.eventually(message = "fetched") { reader.store.hasBlob(id) }
+        assertTrue(reader.store.getBlob(id)!!.second.contentEquals(bytes))
+        m1.shutdown()
+        m2.shutdown()
+    }
 }
