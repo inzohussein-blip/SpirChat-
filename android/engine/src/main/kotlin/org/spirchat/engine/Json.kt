@@ -100,8 +100,13 @@ sealed class Json {
             if (d == 0.0) return "0"
             if (d == Math.floor(d) && Math.abs(d) < 1e21) return BigDecimal(d).toPlainString()
             val neg = d < 0
-            // Shortest round-trip digits, then lay them out as JavaScript does.
-            val bd = BigDecimal(java.lang.Double.toString(Math.abs(d))).stripTrailingZeros()
+            // Shortest digits that round-trip (JDKs before 19 and Android do not guarantee this
+            // from Double.toString), then laid out as JavaScript does.
+            val exact = BigDecimal(Math.abs(d))
+            val bd = (1..17).asSequence()
+                .map { exact.round(java.math.MathContext(it, java.math.RoundingMode.HALF_EVEN)) }
+                .first { it.toDouble() == Math.abs(d) }
+                .stripTrailingZeros()
             val digits = bd.unscaledValue().toString()
             val k = digits.length
             val n = k - bd.scale() // decimal point position: value = 0.digits * 10^n
