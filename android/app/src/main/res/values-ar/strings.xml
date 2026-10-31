@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">سبيرشات</string>
+    <string name="share_app">مشاركة سبيرشات</string>
+    <string name="export_bundle">حفظ أو إرسال حزمة البيانات</string>
+    <string name="mesh_permissions_denied">يحتاج التطبيق إذن البلوتوث والأجهزة القريبة للوصول إلى الهواتف القريبة.</string>
+    <string name="service_title">سبيرشات ينقل الرسائل</string>
+    <string name="service_status">هواتف قريبة: %1$d · محطات متصلة: %2$d</string>
+    <string name="channel_service">النقل في الخلفية</string>
+    <string name="channel_messages">الرسائل الخاصة</string>
+    <string name="channel_urgent">الاستغاثات والتنبيهات الموثّقة</string>
+    <string name="notify_dm">رسالة خاصة جديدة</string>
+    <string name="notify_sos">نداء استغاثة قريب</string>
+</resources>

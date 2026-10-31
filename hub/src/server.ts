@@ -66,6 +66,10 @@ function parseEnvelopes(text: string): unknown[] {
 
 export function createHubServer(hub: Hub): Server {
   const { config, store } = hub;
+  const clientIp = (req: IncomingMessage) => {
+    const fwd = config.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : '';
+    return fwd || req.socket.remoteAddress || '?';
+  };
   const importLimiter = new RateLimiter(20, 60_000);
 
   function serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
@@ -113,7 +117,7 @@ export function createHubServer(hub: Hub): Server {
     }
 
     if (path === '/api/envelopes' && req.method === 'POST') {
-      if (!importLimiter.allow(req.socket.remoteAddress ?? '?')) return json(res, 429, { error: 'slow down' });
+      if (!importLimiter.allow(clientIp(req))) return json(res, 429, { error: 'slow down' });
       let envs: unknown[];
       try {
         envs = parseEnvelopes(await readBody(req));

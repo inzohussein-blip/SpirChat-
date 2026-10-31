@@ -62,7 +62,8 @@ export function App() {
           <span class={`status status-${status}`}>
             {status === 'online' && app.hub.name ? `${t('online')} · ${app.hub.name}` : t(status)}
           </span>
-          {app.meshRunning && <span class="status mesh">📡 {app.peers.size}</span>}
+          {app.internetOnline && <span class="status mesh">🌐</span>}
+          {app.meshRunning && <span class="status mesh">📡 {app.peers}</span>}
         </div>
         <button class="sos-btn" onClick={() => setSos(true)}>
           {t('sos')}

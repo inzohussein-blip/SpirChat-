@@ -69,8 +69,8 @@ const ar = {
   danger: 'خطر',
   safety: 'تنبيه أمني: أي بث لاسلكي يمكن رصد مكانه. في الخطر، أغلق الواي فاي والبلوتوث.',
   dataMule: 'نقل يدوي',
-  export: 'تنزيل حزمة بيانات المحطة',
-  import: 'رفع حزمة إلى المحطة',
+  export: 'حفظ حزمة البيانات',
+  import: 'تحميل حزمة بيانات',
   imported: 'تمت الإضافة',
   mesh: 'الاتصال المباشر بين الهواتف',
   meshHint:
@@ -84,6 +84,16 @@ const ar = {
   getAppHint: 'التطبيق يضيف الاتصال المباشر بين الهواتف ويعمل دون محطة.',
   hubAddress: 'عنوان المحطة (اختياري)',
   hubAddressHint: 'يبحث التطبيق عن المحطة تلقائياً. أدخل عنوانها هنا فقط إن لم يجدها، مثل 10.42.0.1',
+  background: 'العمل في الخلفية والشاشة مطفأة',
+  backgroundHint: 'يبقى هاتفك ينقل الرسائل وهو في جيبك. يظهر إشعار دائم صغير، ويستهلك بعض البطارية.',
+  internet: 'الإنترنت',
+  internetHint:
+    'عند توفر الإنترنت يتصل التطبيق بمحطات الإنترنت أيضاً، فتصل رسائلك لأي مكان في العالم، وتصل رسائل العالم للحي عبر أي هاتف أو محطة متصلة.',
+  internetUse: 'استخدام الإنترنت عند توفره',
+  internetPrivacy:
+    'محطة الإنترنت لا ترى محتوى رسائلك الخاصة ولا مرسلها، لكنها ترى عنوان IP الخاص بك. أوقف الخيار إن كان ذلك خطراً عليك.',
+  add: 'إضافة',
+  dataMuleHint: 'احفظ كل ما يحمله جهازك في ملف، وانقله بفلاشة أو بلوتوث إلى هاتف أو محطة أخرى، ثم ارفعه هناك.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -160,8 +170,8 @@ const en: Record<Key, string> = {
   danger: 'Danger',
   safety: 'Safety: any radio transmission can be located. When in danger, turn off Wi-Fi and Bluetooth.',
   dataMule: 'Manual transfer',
-  export: 'Download hub data bundle',
-  import: 'Upload bundle to hub',
+  export: 'Save data bundle',
+  import: 'Load data bundle',
   imported: 'Added',
   mesh: 'Direct phone-to-phone',
   meshHint:
@@ -175,6 +185,16 @@ const en: Record<Key, string> = {
   getAppHint: 'The app adds direct phone-to-phone messaging and works without a hub.',
   hubAddress: 'Hub address (optional)',
   hubAddressHint: 'The app finds the hub automatically. Only enter its address if it does not, e.g. 10.42.0.1',
+  background: 'Keep running with the screen off',
+  backgroundHint: 'Your phone keeps relaying messages in your pocket. A small permanent notification is shown; it uses some battery.',
+  internet: 'Internet',
+  internetHint:
+    'When the internet is available the app also connects to internet hubs, so your messages reach anywhere in the world, and the world reaches your neighbourhood through any connected phone or hub.',
+  internetUse: 'Use the internet when available',
+  internetPrivacy:
+    'Internet hubs cannot see the content or sender of private messages, but they do see your IP address. Turn this off if that puts you at risk.',
+  add: 'Add',
+  dataMuleHint: 'Save everything your device carries to a file, move it by USB stick or Bluetooth to another phone or hub, and load it there.',
 };
 
 export type Lang = 'ar' | 'en';

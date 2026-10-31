@@ -1,0 +1,6 @@
+**/node_modules
+**/dist
+android
+e2e
+.git
+**/data

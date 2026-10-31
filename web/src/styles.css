@@ -171,3 +171,7 @@ main { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; }
 .status.mesh { margin-inline-start: 0.6rem; }
 .status.mesh::before { content: none; }
 hr { border: none; border-block-start: 1px solid var(--border); margin-block: 0.75rem; }
+
+.hub-list { list-style: none; padding: 0; margin: 0.5rem 0; }
+.hub-list li { display: flex; justify-content: space-between; align-items: center; padding-block: 0.25rem; overflow-wrap: anywhere; }
+.file-btn.wide, button.wide { margin-block: 0.25rem; }

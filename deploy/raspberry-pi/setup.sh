@@ -9,7 +9,9 @@
 set -euo pipefail
 
 HUB_NAME="${HUB_NAME:-SpirChat}"
-SSID="${SSID:-SpirChat-${HUB_NAME}}"
+# Every hub uses the same network name, so a phone that joined one hub joins any other
+# automatically: messages it carries are delivered as soon as its owner walks past.
+SSID="${SSID:-SpirChat}"
 WIFI_IF="${WIFI_IF:-wlan0}"
 HUB_IP="${HUB_IP:-10.42.0.1}"
 CHANNEL="${CHANNEL:-6}"

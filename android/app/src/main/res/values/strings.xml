@@ -2,5 +2,13 @@
 <resources>
     <string name="app_name">SpirChat</string>
     <string name="share_app">Share SpirChat</string>
+    <string name="export_bundle">Save or send the data bundle</string>
     <string name="mesh_permissions_denied">Bluetooth and nearby-device permissions are needed to reach nearby phones.</string>
+    <string name="service_title">SpirChat is relaying messages</string>
+    <string name="service_status">Nearby phones: %1$d · Hubs online: %2$d</string>
+    <string name="channel_service">Background relaying</string>
+    <string name="channel_messages">Private messages</string>
+    <string name="channel_urgent">SOS and verified alerts</string>
+    <string name="notify_dm">New private message</string>
+    <string name="notify_sos">SOS nearby</string>
 </resources>

@@ -77,17 +77,79 @@ function Mesh() {
       <p class="hint">{t('meshHint')}</p>
       <div class="row">
         <span>
-          {t('nearby')}: <strong>{app.peers.size}</strong>
+          {t('nearby')}: <strong>{app.peers}</strong>
         </span>
         <button class={app.meshRunning ? '' : 'primary'} onClick={() => app.setMesh(!app.meshRunning)}>
           {app.meshRunning ? t('meshOff') : t('meshOn')}
         </button>
       </div>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={app.settings.background}
+          onChange={(e) => void app.updateSettings({ background: e.currentTarget.checked })}
+        />
+        {t('background')}
+      </label>
+      <p class="hint">{t('backgroundHint')}</p>
       <hr />
       <button class="wide" onClick={() => native?.shareApp()}>
         📲 {t('shareApp')}
       </button>
       <p class="hint">{t('shareAppHint')}</p>
+    </section>
+  );
+}
+
+function Internet() {
+  const app = useApp();
+  const [draft, setDraft] = useState('');
+  const { internetHubs, internetEnabled } = app.settings;
+  const internet = app.hubs.filter((h) => h.internet);
+  const add = (e: Event) => {
+    e.preventDefault();
+    const url = draft.trim().replace(/\/+$/, '');
+    if (!url) return;
+    const full = /^\w+:\/\//.test(url) ? url : `https://${url}`;
+    if (!internetHubs.includes(full)) void app.updateSettings({ internetHubs: [...internetHubs, full] });
+    setDraft('');
+  };
+  return (
+    <section class="card">
+      <h2>🌐 {t('internet')}</h2>
+      <p class="hint">{t('internetHint')}</p>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={internetEnabled}
+          onChange={(e) => void app.updateSettings({ internetEnabled: e.currentTarget.checked })}
+        />
+        {t('internetUse')}
+      </label>
+      <ul class="hub-list">
+        {internetHubs.map((url) => {
+          const st = internet.find((h) => h.url.replace(/\/+$/, '') === url.replace(/\/+$/, ''));
+          return (
+            <li key={url}>
+              <span class={`status status-${internetEnabled ? (st?.state ?? 'offline') : 'offline'}`} dir="ltr">
+                {st?.name ? `${st.name} · ` : ''}
+                {url}
+              </span>
+              <button
+                class="link"
+                onClick={() => void app.updateSettings({ internetHubs: internetHubs.filter((u) => u !== url) })}
+              >
+                ✕
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <form class="row" onSubmit={add}>
+        <input value={draft} dir="ltr" placeholder="https://hub.example.org" onInput={(e) => setDraft(e.currentTarget.value)} />
+        <button class="primary">{t('add')}</button>
+      </form>
+      <p class="warn">{t('internetPrivacy')}</p>
     </section>
   );
 }
@@ -111,13 +173,13 @@ function GetApp() {
 }
 
 function HubAddress() {
-  const [addr, setAddr] = useState(app.manualHub);
+  const [addr, setAddr] = useState(app.settings.manualHub);
   return (
     <form
       class="card"
       onSubmit={(e) => {
         e.preventDefault();
-        void app.setManualHub(addr);
+        void app.updateSettings({ manualHub: addr.trim() });
       }}
     >
       <h2>{t('hubAddress')}</h2>
@@ -130,37 +192,40 @@ function HubAddress() {
   );
 }
 
+function download(name: string, text: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/x-ndjson' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+/** Carrying data by hand: from this device to a USB stick, another phone or another hub. */
 function DataMule() {
   const [result, setResult] = useState('');
-  const base = app.hubBase;
-  if (app.hub.status === 'offline' || app.hub.status === 'connecting') return null;
   return (
     <section class="card">
       <h2>{t('dataMule')}</h2>
-      <a
-        class="button"
-        href={`${base}/api/export`}
-        download
-        onClick={(e) => {
-          if (!native) return;
-          e.preventDefault();
-          native.openUrl(`${base}/api/export`);
-        }}
+      <p class="hint">{t('dataMuleHint')}</p>
+      <button
+        class="wide"
+        onClick={() =>
+          native ? native.exportBundle() : download(`spirchat-${Date.now()}.ndjson`, app.exportBundle())
+        }
       >
         ⬇️ {t('export')}
-      </a>
-      <label class="file-btn">
+      </button>
+      <label class="file-btn wide">
         ⬆️ {t('import')}
         <input
           type="file"
-          accept=".ndjson,.json,application/x-ndjson"
+          accept=".ndjson,.json,application/x-ndjson,application/json,text/plain"
           hidden
           onChange={async (e) => {
             const file = e.currentTarget.files?.[0];
             if (!file) return;
-            const res = await fetch(`${base}/api/envelopes`, { method: 'POST', body: await file.text() });
-            const r = (await res.json()) as { added?: number; error?: string };
-            setResult(r.error ?? `${t('imported')}: ${r.added}`);
+            const added = await app.importBundle(await file.text());
+            setResult(`${t('imported')}: ${added}`);
           }}
         />
       </label>
@@ -178,6 +243,7 @@ export function Me() {
     <div class="me">
       <ProfileForm />
       {native ? <Mesh /> : <GetApp />}
+      <Internet />
       {app.alertKeys.has(me.id) && <AlertForm />}
       <section class="card">
         <h2>{t('yourId')}</h2>
@@ -201,6 +267,9 @@ export function Me() {
         <h2>{t('hubInfo')}</h2>
         <p>
           {app.hub.name ?? '—'} · {t(app.hub.status)}
+        </p>
+        <p>
+          🌐 {t('internet')}: {app.internetOnline ? t('online') : t('offline')}
         </p>
         <p>
           {t('carrying')}: <strong>{app.envelopes.size}</strong>

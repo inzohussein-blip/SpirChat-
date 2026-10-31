@@ -16,6 +16,8 @@ export interface Config {
   maxStoreBytes: number;
   /** Answer OS connectivity checks so phones open the app as a captive portal. */
   captive: boolean;
+  /** Behind a reverse proxy (internet hubs): take the client address from X-Forwarded-For. */
+  trustProxy: boolean;
 }
 
 const list = (v: string | undefined) =>
@@ -39,5 +41,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     alertKeys: list(env.ALERT_KEYS),
     maxStoreBytes: Number(env.MAX_STORE_MB ?? 2048) * 1024 * 1024,
     captive: env.CAPTIVE === '1',
+    trustProxy: env.TRUST_PROXY === '1',
   };
 }

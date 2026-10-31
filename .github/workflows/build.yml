@@ -17,9 +17,16 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (real hubs, real browser)
+        run: npm run e2e
 
   android:
     runs-on: ubuntu-latest
+    env:
+      SPIRCHAT_INTERNET_HUBS: ${{ vars.SPIRCHAT_INTERNET_HUBS }}
+      VITE_INTERNET_HUBS: ${{ vars.SPIRCHAT_INTERNET_HUBS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,10 +43,31 @@ jobs:
       - name: Engine tests (Kotlin, against the real hub)
         working-directory: android
         run: ./gradlew :engine:test --no-daemon --stacktrace
+      - name: Decode signing key
+        id: key
+        env:
+          KEYSTORE_B64: ${{ secrets.SPIRCHAT_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No signing key configured: building a debug APK. Updating it will require uninstalling (see android/scripts/make-keystore.sh)."
+          fi
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk SpirChat.apk
+        env:
+          SPIRCHAT_KEYSTORE: ${{ steps.key.outputs.path }}
+          SPIRCHAT_KEYSTORE_PASSWORD: ${{ secrets.SPIRCHAT_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$SPIRCHAT_KEYSTORE" ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+            cp app/build/outputs/apk/release/app-release.apk ../SpirChat.apk
+          else
+            ./gradlew assembleDebug --no-daemon --stacktrace
+            cp app/build/outputs/apk/debug/app-debug.apk ../SpirChat.apk
+          fi
+      - run: sha256sum SpirChat.apk
       - uses: actions/upload-artifact@v4
         with:
           name: SpirChat-android

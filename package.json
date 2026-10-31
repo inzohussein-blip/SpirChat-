@@ -14,10 +14,12 @@
     "dev:web": "npm run dev -w web",
     "test": "node --disable-warning=ExperimentalWarning --test packages/protocol/test/*.test.ts hub/test/*.test.ts",
     "vectors": "node packages/protocol/scripts/vectors.ts > packages/protocol/test/vectors.json",
-    "typecheck": "tsc -p packages/protocol && tsc -p hub && tsc -p web"
+    "e2e": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 e2e/*.test.ts",
+    "typecheck": "tsc -p packages/protocol && tsc -p hub && tsc -p web && tsc -p e2e"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "playwright": "^1.56.1",
     "typescript": "^5.9.3"
   },
   "engines": {
