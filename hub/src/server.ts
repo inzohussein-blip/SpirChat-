@@ -34,7 +34,12 @@ const MAX_BODY = 32 * 1024 * 1024;
 const PAGE = 200;
 
 function json(res: ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  // The Android app's pages have their own origin; everything on this API is public anyway.
+  res.writeHead(status, {
+    'content-type': 'application/json',
+    'cache-control': 'no-store',
+    'access-control-allow-origin': '*',
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -139,6 +144,19 @@ export function createHubServer(hub: Hub): Server {
         since = page.at(-1)!.seq;
       }
       return res.end();
+    }
+
+    if (path === '/spirchat.apk' && (req.method === 'GET' || req.method === 'HEAD')) {
+      // Drop a built APK into the data directory and every phone on the hub can install it.
+      const apk = join(config.dataDir, 'spirchat.apk');
+      if (!existsSync(apk)) return json(res, 404, { error: 'no apk on this hub' });
+      res.writeHead(200, {
+        'content-type': MIME['.apk']!,
+        'content-length': statSync(apk).size,
+        'content-disposition': 'attachment; filename="SpirChat.apk"',
+      });
+      if (req.method === 'HEAD') return res.end();
+      return createReadStream(apk).pipe(res);
     }
 
     if (path.startsWith('/api/')) return json(res, 404, { error: 'not found' });

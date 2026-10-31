@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SpirChat</string>
+    <string name="share_app">Share SpirChat</string>
+    <string name="mesh_permissions_denied">Bluetooth and nearby-device permissions are needed to reach nearby phones.</string>
+</resources>

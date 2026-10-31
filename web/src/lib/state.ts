@@ -14,12 +14,18 @@ import {
   MAX_HAVE_IDS,
   newIdentity,
   openDirect,
+  type PeerMessage,
   priorityOf,
   type ProfileBody,
   type SignedKind,
   validateEnvelope,
 } from '@spirchat/protocol';
 import * as db from './db.ts';
+import { native } from './native.ts';
+
+/** Envelopes worth pushing to nearby phones immediately rather than at the next full sync. */
+const GOSSIP_MAX_AGE = 3600_000;
+const shouldGossip = (env: Envelope) => priorityOf(env) <= 2 || Date.now() - env.ts < GOSSIP_MAX_AGE;
 
 export type HubStatus = 'offline' | 'connecting' | 'syncing' | 'online';
 
@@ -38,6 +44,13 @@ class AppState {
   /** Envelope IDs the current hub has confirmed it holds. */
   atHub = new Set<string>();
   hub: { status: HubStatus; name?: string; hubId?: string } = { status: 'offline' };
+  /** HTTP base URL of the connected hub ('' when served by the hub itself). */
+  hubBase = '';
+  /** Manually entered hub address (host[:port]), tried first. */
+  manualHub = '';
+  /** Nearby phones connected over Bluetooth / Wi-Fi Direct (Android app only). */
+  peers = new Set<string>();
+  meshRunning = false;
   version = 0;
 
   private listeners = new Set<() => void>();
@@ -46,6 +59,9 @@ class AppState {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private retryMs = 1000;
   private offered: string[] = [];
+  private candidateIdx = 0;
+  /** After every address has failed once, keep retrying without flashing "connecting". */
+  private quietRetry = false;
 
   changed() {
     this.version++;
@@ -61,6 +77,7 @@ class AppState {
     const seed = await db.getMeta<string>('seed');
     if (seed) this.setIdentity(identityFromSeed(fromB64u(seed)));
     this.alertKeys = new Set((await db.getMeta<string[]>('alertKeys')) ?? []);
+    this.manualHub = (await db.getMeta<string>('manualHub')) ?? '';
     const now = Date.now();
     const expired: string[] = [];
     for (const env of await db.allEnvelopes()) {
@@ -71,6 +88,7 @@ class AppState {
     for (const s of await db.allSent()) this.messages.set(s.id, { ...s, mine: true });
     this.changed();
     this.connect();
+    this.bindNative();
   }
 
   private setIdentity(id: Identity) {
@@ -109,9 +127,10 @@ class AppState {
     return true;
   }
 
-  private receive(env: Envelope) {
+  private receive(env: Envelope, fromPeer?: string) {
     if (this.envelopes.has(env.id) || !validateEnvelope(env).ok) return;
     this.ingest(env);
+    this.gossip(env, fromPeer);
     this.pending.push(env);
     this.flushTimer ??= setTimeout(() => {
       this.flushTimer = null;
@@ -126,6 +145,7 @@ class AppState {
     this.ingest(env);
     await db.putEnvelopes([env]);
     this.send({ t: 'publish', env });
+    this.gossip(env);
     this.changed();
   }
 
@@ -154,26 +174,86 @@ class AppState {
     this.changed();
   }
 
+  private hubCandidates(): string[] {
+    const list = this.manualHub ? [this.manualHub] : [];
+    if (native) {
+      const gw = native.gatewayIp();
+      if (gw) list.push(gw);
+      list.push('10.42.0.1', 'spirchat.local');
+    } else {
+      list.push(location.host);
+    }
+    return [...new Set(list)];
+  }
+
   connect() {
     if (this.ws) return;
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}/ws`);
+    const candidates = this.hubCandidates();
+    const host = candidates[this.candidateIdx % candidates.length]!;
+    // Inside the Android app the page is served locally, so hubs are always plain http on the LAN.
+    const secure = !native && location.protocol === 'https:';
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(`${secure ? 'wss' : 'ws'}://${host}/ws`);
+    } catch {
+      this.candidateIdx++;
+      setTimeout(() => this.connect(), 200);
+      return;
+    }
     this.ws = ws;
-    this.setHub({ status: 'connecting' });
+    let opened = false;
+    if (!this.quietRetry) this.setHub({ status: 'connecting' });
 
     ws.onopen = async () => {
+      opened = true;
       this.retryMs = 1000;
+      this.quietRetry = false;
+      this.setHub({ status: 'connecting' });
+      this.hubBase = native || host !== location.host ? `${secure ? 'https' : 'http'}://${host}` : '';
       const cursor = await db.getMeta<{ hubId: string; seq: number }>('cursor');
       ws.send(JSON.stringify({ t: 'hello', hubId: cursor?.hubId, since: cursor?.seq }));
     };
     ws.onmessage = (e) => this.onHubMessage(JSON.parse(String(e.data)) as HubMessage);
     ws.onclose = () => {
+      if (this.ws !== ws) return;
       this.ws = null;
       this.atHub.clear();
-      this.setHub({ status: 'offline' });
-      setTimeout(() => this.connect(), this.retryMs);
-      this.retryMs = Math.min(this.retryMs * 2, 30_000);
+      this.setHub({ status: 'offline', name: undefined });
+      let delay = 1000;
+      if (!opened) {
+        // Try the next candidate address quickly; back off once all have failed.
+        this.candidateIdx++;
+        const wrapped = this.candidateIdx % candidates.length === 0;
+        delay = wrapped ? this.retryMs : 200;
+        if (wrapped) {
+          this.retryMs = Math.min(this.retryMs * 2, 30_000);
+          this.quietRetry = true;
+        }
+      }
+      setTimeout(() => this.connect(), delay);
     };
+  }
+
+  /** Drop the current attempt and retry every address now (e.g. after joining a new Wi-Fi). */
+  reconnectNow() {
+    this.retryMs = 1000;
+    this.candidateIdx = 0;
+    this.quietRetry = false;
+    if (this.hub.status === 'online' || this.hub.status === 'syncing') return;
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
+    this.connect();
+  }
+
+  async setManualHub(addr: string) {
+    this.manualHub = addr.trim().replace(/^\w+:\/\//, '').replace(/\/.*$/, '');
+    await db.setMeta('manualHub', this.manualHub);
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
+    this.candidateIdx = 0;
+    this.connect();
   }
 
   private onHubMessage(m: HubMessage) {
@@ -211,16 +291,85 @@ class AppState {
     }
   }
 
-  /** Offer everything we carry (urgent first); the hub asks for what it lacks. */
-  private offerCarried() {
+  /** IDs of everything we carry, urgent first. */
+  private carriedIds(): string[] {
     const now = Date.now();
-    const ids = [...this.envelopes.values()]
+    return [...this.envelopes.values()]
       .filter((e) => e.exp > now)
       .sort((a, b) => priorityOf(a) - priorityOf(b) || b.ts - a.ts)
       .slice(0, MAX_HAVE_IDS)
       .map((e) => e.id);
+  }
+
+  /** Offer everything we carry; the hub asks for what it lacks. */
+  private offerCarried() {
+    const ids = this.carriedIds();
     this.offered = ids;
     if (ids.length) this.send({ t: 'have', ids });
+  }
+
+  // --- nearby phones (Android app) ---------------------------------------
+
+  private sendPeer(id: string, m: PeerMessage) {
+    native?.sendToPeer(id, JSON.stringify(m));
+  }
+
+  private gossip(env: Envelope, except?: string) {
+    if (!shouldGossip(env)) return;
+    for (const p of this.peers) if (p !== except) this.sendPeer(p, { t: 'env', env });
+  }
+
+  private onPeerMessage(peer: string, m: PeerMessage) {
+    switch (m.t) {
+      case 'have': {
+        const ids = Array.isArray(m.ids) ? m.ids.slice(0, MAX_HAVE_IDS) : [];
+        this.sendPeer(peer, { t: 'want', ids: ids.filter((id) => !this.envelopes.has(id)) });
+        return;
+      }
+      case 'want':
+        for (const id of Array.isArray(m.ids) ? m.ids : []) {
+          const env = this.envelopes.get(id);
+          if (env) this.sendPeer(peer, { t: 'env', env });
+        }
+        return;
+      case 'env':
+        this.receive(m.env, peer);
+        return;
+    }
+  }
+
+  private bindNative() {
+    if (!native) return;
+    this.meshRunning = native.isMeshRunning();
+    window.spirchatPeer = {
+      onConnected: (id) => {
+        this.peers.add(id);
+        this.sendPeer(id, { t: 'have', ids: this.carriedIds() });
+        this.changed();
+      },
+      onDisconnected: (id) => {
+        this.peers.delete(id);
+        this.changed();
+      },
+      onMessage: (id, data) => {
+        try {
+          this.onPeerMessage(id, JSON.parse(data) as PeerMessage);
+        } catch (e) {
+          console.warn('bad peer message', e);
+        }
+      },
+      onMeshState: (running) => {
+        this.meshRunning = running;
+        if (!running) this.peers.clear();
+        this.changed();
+      },
+      onNetworkChanged: () => this.reconnectNow(),
+    };
+  }
+
+  setMesh(on: boolean) {
+    if (on) native?.startMesh();
+    else native?.stopMesh();
   }
 
   // --- derived views ------------------------------------------------------

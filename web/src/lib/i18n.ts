@@ -72,6 +72,18 @@ const ar = {
   export: 'تنزيل حزمة بيانات المحطة',
   import: 'رفع حزمة إلى المحطة',
   imported: 'تمت الإضافة',
+  mesh: 'الاتصال المباشر بين الهواتف',
+  meshHint:
+    'يتصل هاتفك تلقائياً بالهواتف القريبة (بلوتوث وواي فاي مباشر، حتى 100 متر تقريباً) ويتبادل معها الرسائل والمنشورات دون محطة. يعمل ما دام التطبيق مفتوحاً.',
+  meshOn: 'تشغيل',
+  meshOff: 'إيقاف',
+  nearby: 'هواتف قريبة متصلة',
+  shareApp: 'مشاركة التطبيق مع هاتف آخر',
+  shareAppHint: 'يرسل ملف التطبيق (APK) عبر البلوتوث أو المشاركة القريبة، دون الحاجة لمتجر أو إنترنت.',
+  getApp: 'تحميل تطبيق أندرويد',
+  getAppHint: 'التطبيق يضيف الاتصال المباشر بين الهواتف ويعمل دون محطة.',
+  hubAddress: 'عنوان المحطة (اختياري)',
+  hubAddressHint: 'يبحث التطبيق عن المحطة تلقائياً. أدخل عنوانها هنا فقط إن لم يجدها، مثل 10.42.0.1',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -151,6 +163,18 @@ const en: Record<Key, string> = {
   export: 'Download hub data bundle',
   import: 'Upload bundle to hub',
   imported: 'Added',
+  mesh: 'Direct phone-to-phone',
+  meshHint:
+    'Your phone connects automatically to nearby phones (Bluetooth and Wi-Fi Direct, roughly 100 m) and swaps messages and posts with them, no hub needed. Works while the app is open.',
+  meshOn: 'Turn on',
+  meshOff: 'Turn off',
+  nearby: 'Nearby phones connected',
+  shareApp: 'Share the app with another phone',
+  shareAppHint: 'Sends the app file (APK) over Bluetooth or Nearby Share, no store or internet needed.',
+  getApp: 'Download the Android app',
+  getAppHint: 'The app adds direct phone-to-phone messaging and works without a hub.',
+  hubAddress: 'Hub address (optional)',
+  hubAddressHint: 'The app finds the hub automatically. Only enter its address if it does not, e.g. 10.42.0.1',
 };
 
 export type Lang = 'ar' | 'en';

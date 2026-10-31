@@ -1,6 +1,7 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { type AlertBody, fingerprint } from '@spirchat/protocol';
 import { type Lang, lang, setLang, t } from '../lib/i18n.ts';
+import { native } from '../lib/native.ts';
 import { app, useApp } from '../lib/state.ts';
 
 function ProfileForm() {
@@ -68,12 +69,84 @@ function AlertForm() {
   );
 }
 
+function Mesh() {
+  const app = useApp();
+  return (
+    <section class="card">
+      <h2>📡 {t('mesh')}</h2>
+      <p class="hint">{t('meshHint')}</p>
+      <div class="row">
+        <span>
+          {t('nearby')}: <strong>{app.peers.size}</strong>
+        </span>
+        <button class={app.meshRunning ? '' : 'primary'} onClick={() => app.setMesh(!app.meshRunning)}>
+          {app.meshRunning ? t('meshOff') : t('meshOn')}
+        </button>
+      </div>
+      <hr />
+      <button class="wide" onClick={() => native?.shareApp()}>
+        📲 {t('shareApp')}
+      </button>
+      <p class="hint">{t('shareAppHint')}</p>
+    </section>
+  );
+}
+
+function GetApp() {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    fetch('/spirchat.apk', { method: 'HEAD' })
+      .then((r) => setAvailable(r.ok && !(r.headers.get('content-type') ?? '').includes('html')))
+      .catch(() => {});
+  }, []);
+  if (!available) return null;
+  return (
+    <section class="card">
+      <a class="button primary wide" href="/spirchat.apk" download>
+        🤖 {t('getApp')}
+      </a>
+      <p class="hint">{t('getAppHint')}</p>
+    </section>
+  );
+}
+
+function HubAddress() {
+  const [addr, setAddr] = useState(app.manualHub);
+  return (
+    <form
+      class="card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void app.setManualHub(addr);
+      }}
+    >
+      <h2>{t('hubAddress')}</h2>
+      <div class="row">
+        <input value={addr} dir="ltr" placeholder="10.42.0.1" onInput={(e) => setAddr(e.currentTarget.value)} />
+        <button class="primary">{t('save')}</button>
+      </div>
+      <p class="hint">{t('hubAddressHint')}</p>
+    </form>
+  );
+}
+
 function DataMule() {
   const [result, setResult] = useState('');
+  const base = app.hubBase;
+  if (app.hub.status === 'offline' || app.hub.status === 'connecting') return null;
   return (
     <section class="card">
       <h2>{t('dataMule')}</h2>
-      <a class="button" href="/api/export" download>
+      <a
+        class="button"
+        href={`${base}/api/export`}
+        download
+        onClick={(e) => {
+          if (!native) return;
+          e.preventDefault();
+          native.openUrl(`${base}/api/export`);
+        }}
+      >
         ⬇️ {t('export')}
       </a>
       <label class="file-btn">
@@ -85,7 +158,7 @@ function DataMule() {
           onChange={async (e) => {
             const file = e.currentTarget.files?.[0];
             if (!file) return;
-            const res = await fetch('/api/envelopes', { method: 'POST', body: await file.text() });
+            const res = await fetch(`${base}/api/envelopes`, { method: 'POST', body: await file.text() });
             const r = (await res.json()) as { added?: number; error?: string };
             setResult(r.error ?? `${t('imported')}: ${r.added}`);
           }}
@@ -104,6 +177,7 @@ export function Me() {
   return (
     <div class="me">
       <ProfileForm />
+      {native ? <Mesh /> : <GetApp />}
       {app.alertKeys.has(me.id) && <AlertForm />}
       <section class="card">
         <h2>{t('yourId')}</h2>
@@ -134,6 +208,7 @@ export function Me() {
         <p class="hint">{t('carryHint')}</p>
       </section>
       <DataMule />
+      {native && <HubAddress />}
       <section class="card">
         <h2>{t('language')}</h2>
         <select

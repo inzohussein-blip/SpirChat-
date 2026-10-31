@@ -2,7 +2,9 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createDirect,
   createSigned,
@@ -174,6 +176,19 @@ test('pruning drops expired and bulky envelopes before urgent ones', () => {
   [old, sos, img].forEach((e) => store.insert(e));
   store.prune(2000, now);
   assert.deepEqual(store.missing([old.id, sos.id, img.id]), [old.id, img.id]);
+});
+
+test('hub serves an APK only when one is installed', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'spirchat-'));
+  const { http } = await startHub({ dataDir });
+  assert.equal((await fetch(`${http}/spirchat.apk`, { method: 'HEAD' })).status, 404);
+  writeFileSync(join(dataDir, 'spirchat.apk'), 'PK fake apk');
+  const res = await fetch(`${http}/spirchat.apk`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/vnd.android.package-archive');
+  assert.equal(await res.text(), 'PK fake apk');
+  const info = await fetch(`${http}/api/info`);
+  assert.equal(info.headers.get('access-control-allow-origin'), '*');
 });
 
 test('captive portal probes redirect to the app', async () => {

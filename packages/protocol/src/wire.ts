@@ -27,3 +27,13 @@ export interface SyncPage {
 }
 
 export const MAX_HAVE_IDS = 5000;
+
+/**
+ * Symmetric phone-to-phone sync over a direct link (Bluetooth / Wi-Fi Direct).
+ * Each side sends `have` on connect; the other answers `want`; envelopes follow.
+ * New urgent envelopes are also pushed unasked with `env`.
+ */
+export type PeerMessage =
+  | { t: 'have'; ids: string[] }
+  | { t: 'want'; ids: string[] }
+  | { t: 'env'; env: Envelope };
