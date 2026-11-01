@@ -2,30 +2,134 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { fingerprint } from '@spirchat/protocol';
 import { ago, t } from '../lib/i18n.ts';
 import { compressImage } from '../lib/image.ts';
-import { app, useApp } from '../lib/state.ts';
+import { app, TTL_CHOICES, useApp } from '../lib/state.ts';
+import { MyQr, QrScanner } from './qr.tsx';
+
+const isGroup = (key: string) => key.startsWith('g:');
+
+function title(key: string): string {
+  return isGroup(key) ? `👥 ${app.groups.get(key.slice(2))?.name ?? '…'}` : app.nameOf(key);
+}
+
+function NewGroup({ onDone }: { onDone: (key: string | null) => void }) {
+  const [name, setName] = useState('');
+  const [members, setMembers] = useState<Set<string>>(new Set());
+  const people = [...app.profiles()].filter(([id]) => id !== app.me?.id && !app.blocked.has(id));
+  return (
+    <form
+      class="card"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!name.trim() || !members.size) return;
+        const id = await app.createGroup(name.trim(), [...members]);
+        onDone(`g:${id}`);
+      }}
+    >
+      <h2>👥 {t('newGroup')}</h2>
+      <label>
+        {t('groupName')}
+        <input value={name} maxLength={40} required onInput={(e) => setName(e.currentTarget.value)} />
+      </label>
+      <p class="hint">{t('groupMembers')}</p>
+      <ul class="pick-list">
+        {people.map(([id, p]) => (
+          <li key={id}>
+            <label class="check">
+              <input
+                type="checkbox"
+                checked={members.has(id)}
+                onChange={(e) => {
+                  const next = new Set(members);
+                  if (e.currentTarget.checked) next.add(id);
+                  else next.delete(id);
+                  setMembers(next);
+                }}
+              />
+              {p.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div class="row">
+        <button type="button" onClick={() => onDone(null)}>
+          {t('cancel')}
+        </button>
+        <button class="primary" disabled={!name.trim() || !members.size}>
+          {t('create')}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 export function Chats({ peer, setPeer }: { peer: string | null; setPeer: (id: string | null) => void }) {
   const app = useApp();
+  const [creating, setCreating] = useState(false);
+  const [qr, setQr] = useState<'show' | 'scan' | null>(null);
   if (peer) return <Conversation peer={peer} onBack={() => setPeer(null)} />;
-  const convs = [...app.conversations()].sort((a, b) => b[1].at(-1)!.ts - a[1].at(-1)!.ts);
-  if (!convs.length) return <p class="empty">{t('noChats')}</p>;
+  if (creating) {
+    return (
+      <NewGroup
+        onDone={(k) => {
+          setCreating(false);
+          if (k) setPeer(k);
+        }}
+      />
+    );
+  }
+  const convs = app.conversations();
+  // Groups appear even before their first message.
+  for (const g of app.groups.keys()) if (!convs.has(`g:${g}`)) convs.set(`g:${g}`, []);
+  const sorted = [...convs].sort((a, b) => (b[1].at(-1)?.ts ?? 0) - (a[1].at(-1)?.ts ?? 0));
   return (
-    <ul class="list">
-      {convs.map(([id, msgs]) => {
-        const last = msgs.at(-1)!;
-        return (
-          <li key={id}>
-            <button onClick={() => setPeer(id)}>
-              <strong>{app.nameOf(id)}</strong>
-              <span class="preview-text">{last.text || '📷'}</span>
-              <time>{ago(last.ts)}</time>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <div class="chats">
+      <div class="row toolbar">
+        <button onClick={() => setCreating(true)}>👥 {t('newGroup')}</button>
+        <button onClick={() => setQr('show')}>🔳 {t('myQr')}</button>
+        <button onClick={() => setQr('scan')}>📷 {t('scanQr')}</button>
+      </div>
+      {qr === 'show' && (
+        <div class="modal" role="dialog" aria-modal="true" onClick={() => setQr(null)}>
+          <div class="card center">
+            <h2>{t('myQr')}</h2>
+            <MyQr />
+            <p class="hint">{t('myQrHint')}</p>
+          </div>
+        </div>
+      )}
+      {qr === 'scan' && (
+        <QrScanner
+          onClose={() => setQr(null)}
+          onResult={(id) => {
+            void app.setVerified(id);
+            setQr(null);
+            setPeer(id);
+          }}
+        />
+      )}
+      {!sorted.length && <p class="empty">{t('noChats')}</p>}
+      <ul class="list">
+        {sorted.map(([key, msgs]) => {
+          const last = msgs.at(-1);
+          return (
+            <li key={key}>
+              <button onClick={() => setPeer(key)}>
+                <strong>
+                  {title(key)} {!isGroup(key) && app.verified.has(key) && '✅'}
+                </strong>
+                <span class="preview-text">{last ? last.text || '📷' : ''}</span>
+                {last && <time>{ago(last.ts)}</time>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
+
+const ttlLabel = (ms: number) =>
+  ms === 0 ? t('ttlOff') : ms <= 3600_000 ? t('ttlHour') : ms <= 86_400_000 ? t('ttlDay') : t('ttlWeek');
 
 function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
   useApp();
@@ -33,8 +137,13 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const msgs = app.conversations().get(peer) ?? [];
+  const group = isGroup(peer) ? app.groups.get(peer.slice(2)) : undefined;
+  const ttl = app.ttls[peer] ?? 0;
 
   useEffect(() => end.current?.scrollIntoView(), [msgs.length]);
+
+  const send = (content: { text: string; image?: string }) =>
+    group ? app.sendGroup(group.id, content) : app.sendDirect(peer, content);
 
   const sendImage = async (e: Event) => {
     const file = (e.currentTarget as HTMLInputElement).files?.[0];
@@ -42,7 +151,7 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
     setBusy(true);
     try {
       const { image } = await compressImage(file);
-      await app.sendDirect(peer, { text: '', image });
+      await send({ text: '', image });
     } finally {
       setBusy(false);
     }
@@ -55,32 +164,55 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
           {t('back')}
         </button>
         <div>
-          <h2>{app.nameOf(peer)}</h2>
-          <small title={t('verify')} dir="ltr">
-            🔒 {fingerprint(peer)}
-          </small>
+          <h2>
+            {title(peer)} {!group && app.verified.has(peer) && <span title={t('verified')}>✅</span>}
+          </h2>
+          {group ? (
+            <small>
+              {group.members.length} {t('members')}: {group.members.map((m) => app.nameOf(m)).join('، ')}
+            </small>
+          ) : (
+            <small title={t('verify')} dir="ltr">
+              🔒 {fingerprint(peer)}
+            </small>
+          )}
         </div>
-        <button
-          class="link block-btn"
-          title={t('block')}
-          onClick={() => {
-            if (confirm(t('blockConfirm'))) {
-              void app.block(peer, true);
-              onBack();
-            }
-          }}
+        <select
+          class="ttl"
+          title={t('disappearing')}
+          value={ttl}
+          onChange={(e) => void app.setTtl(peer, Number(e.currentTarget.value))}
         >
-          🚫
-        </button>
+          {TTL_CHOICES.map((ms) => (
+            <option key={ms} value={ms}>
+              ⏱ {ttlLabel(ms)}
+            </option>
+          ))}
+        </select>
+        {!group && (
+          <button
+            class="link block-btn"
+            title={t('block')}
+            onClick={() => {
+              if (confirm(t('blockConfirm'))) {
+                void app.block(peer, true);
+                onBack();
+              }
+            }}
+          >
+            🚫
+          </button>
+        )}
       </header>
       <p class="hint">{t('encrypted')}</p>
       <div class="messages">
         {msgs.map((m) => (
           <div key={m.id} class={`bubble ${m.mine ? 'mine' : ''}`}>
+            {group && !m.mine && <small>{app.nameOf(m.from)}</small>}
             {m.image && <img src={m.image} alt="" />}
             {m.text && <p>{m.text}</p>}
             <time>
-              {ago(m.ts)} {m.mine && (app.atHub.has(m.id) ? '✓' : '🕓')}
+              {ago(m.ts)} {m.exp - m.ts <= 7 * 86_400_000 && '⏱'} {m.mine && (app.atHub.has(m.id) ? '✓' : '🕓')}
             </time>
           </div>
         ))}
@@ -93,7 +225,7 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
           if (!text.trim()) return;
           setBusy(true);
           try {
-            await app.sendDirect(peer, { text: text.trim() });
+            await send({ text: text.trim() });
             setText('');
           } finally {
             setBusy(false);

@@ -4,6 +4,7 @@ import { GOVERNORATES, slugify } from '../lib/areas.ts';
 import { type Lang, lang, setLang, t } from '../lib/i18n.ts';
 import { native } from '../lib/native.ts';
 import { app, useApp } from '../lib/state.ts';
+import { SecurityCard } from './lock.tsx';
 
 function ProfileForm() {
   const me = app.me!;
@@ -16,7 +17,7 @@ function ProfileForm() {
       class="card"
       onSubmit={async (e) => {
         e.preventDefault();
-        await app.publishSigned('profile', { name: name.trim(), ...(bio.trim() ? { bio: bio.trim() } : {}) });
+        await app.publishProfile(name.trim(), bio.trim());
         setSaved(true);
       }}
     >
@@ -301,6 +302,7 @@ export function Me() {
     <div class="me">
       <ProfileForm />
       <AreaForm />
+      <SecurityCard />
       {native ? <Mesh /> : <GetApp />}
       <Internet />
       {app.alertKeys.has(me.id) && <AlertForm />}

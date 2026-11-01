@@ -179,3 +179,66 @@ test('area filter and blocking', async () => {
   await baghdad.click('.menu button');
   await baghdad.waitForSelector('article.post', { state: 'detached' });
 });
+
+test('PIN lock, duress PIN, and a private group of three', async () => {
+  const hub = await startHub('Group-Hub');
+  hubs.push(hub);
+  const [a, b, c] = [await phone(hub.url), await phone(hub.url), await phone(hub.url)];
+  await signUp(a, 'أم علي');
+  await signUp(b, 'علي');
+  await signUp(c, 'زينب');
+  for (const p of [a, b, c]) await p.waitForSelector('.status-online');
+
+  // a creates a group with b and c once their profiles have arrived.
+  await tab(a, 3);
+  await a.click('text=مجموعة جديدة');
+  await a.waitForSelector('.pick-list li:nth-child(2)');
+  await a.fill('input[maxlength="40"]', 'العائلة');
+  for (const box of await a.locator('.pick-list input').all()) await box.check();
+  await a.click('button:has-text("إنشاء")');
+  await a.fill('.send-row input:not([type=file])', 'تجمعنا الساعة 6');
+  await a.click('.send-row button.primary');
+
+  for (const p of [b, c]) {
+    await tab(p, 3);
+    await p.click('.list li button:has-text("العائلة")');
+    await p.waitForSelector('.bubble p:has-text("تجمعنا الساعة 6")');
+  }
+  await c.fill('.send-row input:not([type=file])', 'تمام');
+  await c.click('.send-row button.primary');
+  await a.waitForSelector('.bubble p:has-text("تمام")');
+  assert.equal(await a.textContent('.bubble:not(.mine) small'), 'زينب');
+
+  // My QR code renders.
+  await tab(b, 3);
+  await b.click('.list li button:has-text("العائلة")').catch(() => {});
+  await b.click('text=رجوع').catch(() => {});
+  await b.click('text=رمزي');
+  await b.waitForSelector('.qr svg');
+  await b.click('.modal');
+
+  // b sets a PIN and a duress PIN; reload shows the lock screen.
+  await tab(b, 5);
+  await b.fill('input:near(:text("رمز PIN جديد"))', '2580');
+  await b.fill('input:near(:text("رمز الإكراه"))', '0000');
+  await b.click('form:has(input[type=password]) button.primary');
+  await b.waitForSelector('text=قفل الآن');
+  await b.reload();
+  await b.waitForSelector('text=أدخل رمز PIN');
+  await b.fill('input[type=password]', '1111');
+  await b.click('button.primary');
+  await b.waitForSelector('text=رمز غير صحيح');
+  await b.fill('input[type=password]', '2580');
+  await b.click('button.primary');
+  await b.waitForSelector('.tabs');
+  await tab(b, 3);
+  await b.waitForSelector('.list li button:has-text("العائلة")');
+
+  // Duress PIN: everything gone, an empty account opens.
+  await b.reload();
+  await b.fill('input[type=password]', '0000');
+  await b.click('button.primary');
+  await b.waitForSelector('.tabs');
+  await tab(b, 3);
+  assert.equal(await b.locator('.list li button:has-text("العائلة")').count(), 0);
+});

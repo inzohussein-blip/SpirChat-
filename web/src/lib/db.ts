@@ -5,6 +5,10 @@ import type { DirectMessage, Envelope } from '@spirchat/protocol';
 
 export interface SentMessage extends DirectMessage {
   id: string;
+  /** When the envelope (and so this copy) expires. */
+  exp?: number;
+  /** Group id when sent to a private group (then `to` is the group id too). */
+  group?: string;
 }
 
 const DB_NAME = 'spirchat';
@@ -84,6 +88,15 @@ export async function getBlob(id: string): Promise<StoredBlob | undefined> {
 
 export async function blobIds(): Promise<string[]> {
   return done((await store('blobs')).getAllKeys() as IDBRequest<string[]>);
+}
+
+export async function deleteMeta(key: string): Promise<void> {
+  await done((await store('meta', 'readwrite')).delete(key));
+}
+
+export async function deleteSent(ids: string[]): Promise<void> {
+  const s = await store('sent', 'readwrite');
+  await Promise.all(ids.map((id) => done(s.delete(id))));
 }
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {

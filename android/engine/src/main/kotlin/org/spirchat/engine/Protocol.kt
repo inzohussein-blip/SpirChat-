@@ -70,6 +70,13 @@ object Protocol {
     private fun isStr(v: Json?, max: Int, min: Int = 0) = v is Json.Str && v.value.length in min..max
     private fun isDataUrl(v: Json?, max: Int) = isStr(v, max) && DATA_URL.containsMatchIn((v as Json.Str).value)
 
+    private fun validKeys(v: Json?): Boolean {
+        val arr = (v as? Json.Arr)?.items ?: return false
+        return arr.size <= 3 && arr.all { k ->
+            k is Json.Obj && isStr(k["k"], 43, 43) && k.long("until") != null
+        }
+    }
+
     fun validateBody(kind: String, body: Json?): String? {
         if (kind == "dm") return if (body == null) null else "dm must not have a body"
         val b = body as? Json.Obj ?: return "body must be an object"
@@ -77,6 +84,7 @@ object Protocol {
             "profile" -> when {
                 !isStr(b["name"], 40, 1) -> "profile.name must be 1-40 chars"
                 b["bio"] != null && !isStr(b["bio"], 160) -> "profile.bio too long"
+                b["keys"] != null && !validKeys(b["keys"]) -> "profile.keys invalid"
                 else -> null
             }
             "post" -> when {

@@ -123,3 +123,45 @@ test('posts may reference media and declare an area', async () => {
   assert.ok(!areasOverlap('baghdad/karrada', 'basra'));
   assert.ok(!areasOverlap('baghdad/karrada', 'baghdad/mansour'));
 });
+
+test('messages sealed to a prekey open only while its secret exists', async () => {
+  const { newPrekey } = await import('../src/index.ts');
+  const alice = newIdentity();
+  const bob = newIdentity();
+  const pk = newPrekey();
+  const env = createDirect(alice, bob.id, { text: 'سر' }, { prekey: pk.pub });
+  assert.deepEqual(validateEnvelope(env), { ok: true });
+  assert.equal(openDirect(bob, env), null, 'identity key alone cannot read it');
+  assert.equal(openDirect(bob, env, [pk.secret])?.text, 'سر');
+});
+
+test('private groups: members read, others cannot, and it looks like a DM', async () => {
+  const { createGroupMessage, openGroupMessage, randomBytes } = await import('../src/index.ts');
+  const alice = newIdentity();
+  const group = { id: b64u(randomBytes(16)), key: b64u(randomBytes(32)) };
+  const env = createGroupMessage(alice, group, { text: 'اجتماع العائلة' });
+  assert.deepEqual(validateEnvelope(env), { ok: true });
+  assert.equal(env.kind, 'dm');
+  assert.equal(env.to!.length, 22, 'same tag length as a private message');
+  const msg = openGroupMessage(group, env);
+  assert.equal(msg?.text, 'اجتماع العائلة');
+  assert.equal(msg?.from, alice.id);
+  assert.equal(openGroupMessage({ ...group, key: b64u(randomBytes(32)) }, env), null);
+});
+
+test('group invites travel inside signed private messages', () => {
+  const alice = newIdentity();
+  const bob = newIdentity();
+  const invite = { id: 'g1', key: 'k', name: 'العائلة', members: [alice.id, bob.id] };
+  const env = createDirect(alice, bob.id, { text: '', invite });
+  assert.deepEqual(openDirect(bob, env)?.invite, invite);
+});
+
+test('PIN lock: right PIN unlocks, wrong PIN does not', async () => {
+  const { lockSeed, unlockSeed, pinVerifier } = await import('../src/index.ts');
+  const a = newIdentity();
+  const lock = await lockSeed(a.seed, '2580', 10);
+  assert.deepEqual(await unlockSeed(lock, '2580'), a.seed);
+  assert.equal(await unlockSeed(lock, '0000'), null);
+  assert.equal(await pinVerifier('1111', lock.salt, 10), await pinVerifier('1111', lock.salt, 10));
+});

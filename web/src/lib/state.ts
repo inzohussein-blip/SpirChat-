@@ -6,7 +6,17 @@ import {
   type BodyByKind,
   dayOf,
   createDirect,
+  createGroupMessage,
   createSigned,
+  type GroupInvite,
+  groupTag,
+  type LockedSeed,
+  lockSeed,
+  newPrekey,
+  openGroupMessage,
+  pinVerifier,
+  randomBytes,
+  unlockSeed,
   type DirectMessage,
   type Envelope,
   fromB64u,
@@ -34,7 +44,25 @@ export type HubStatus = 'offline' | 'connecting' | 'syncing' | 'online';
 export interface ChatMessage extends DirectMessage {
   id: string;
   mine: boolean;
+  exp: number;
+  /** Set for messages in a private group. */
+  group?: string;
 }
+
+interface Prekey {
+  secret: string;
+  pub: string;
+  created: number;
+}
+
+const DAY = 86_400_000;
+const PREKEY_ROTATE = 7 * DAY;
+const PREKEY_VALID = 14 * DAY;
+/** Prekey secrets are deleted after this; messages sealed to them become unreadable. */
+const PREKEY_KEEP = 30 * DAY;
+
+/** Disappearing-message timers offered in chats (ms; 0 = the default lifetime). */
+export const TTL_CHOICES = [0, 3600_000, DAY, 7 * DAY];
 
 export interface Settings {
   /** Internet hubs (https://…) used whenever the internet is reachable. */
@@ -80,6 +108,16 @@ class AppState {
   area: Area = '';
   /** Authors whose content this device hides. */
   blocked = new Set<string>();
+  /** A PIN protects the identity and it has not been entered yet. */
+  locked = false;
+  hasPin = false;
+  groups = new Map<string, GroupInvite>();
+  private groupTags = new Map<string, string>();
+  private prekeys: Prekey[] = [];
+  /** Disappearing-message timer per conversation key. */
+  ttls: Record<string, number> = {};
+  /** Contacts whose identity was confirmed in person (QR scan). */
+  verified = new Set<string>();
   version = 0;
 
   private listeners = new Set<() => void>();
@@ -111,7 +149,14 @@ class AppState {
 
   async load() {
     const seed = await db.getMeta<string>('seed');
+    const lock = await db.getMeta<LockedSeed>('lock');
+    this.hasPin = !!lock;
+    this.prekeys = (await db.getMeta<Prekey[]>('prekeys')) ?? [];
+    this.setGroups((await db.getMeta<GroupInvite[]>('groups')) ?? []);
+    this.ttls = (await db.getMeta<Record<string, number>>('ttls')) ?? {};
+    this.verified = new Set((await db.getMeta<string[]>('verified')) ?? []);
     if (seed) this.setIdentity(identityFromSeed(fromB64u(seed)));
+    else if (lock) this.locked = true;
     this.alertKeys = new Set((await db.getMeta<string[]>('alertKeys')) ?? []);
     this.area = (await db.getMeta<string>('area')) ?? '';
     this.blocked = new Set((await db.getMeta<string[]>('blocked')) ?? []);
@@ -122,7 +167,14 @@ class AppState {
       else this.ingest(env);
     }
     if (expired.length) void db.deleteEnvelopes(expired);
-    for (const s of await db.allSent()) this.messages.set(s.id, { ...s, mine: true });
+    const expiredSent: string[] = [];
+    for (const s of await db.allSent()) {
+      const exp = s.exp ?? Number.MAX_SAFE_INTEGER;
+      if (exp <= now) expiredSent.push(s.id);
+      else this.messages.set(s.id, { ...s, exp, mine: true });
+    }
+    if (expiredSent.length) void db.deleteSent(expiredSent);
+    if (this.me) void this.rotatePrekeys();
 
     if (native) {
       this.nativeSeq = (await db.getMeta<number>('nativeSeq')) ?? 0;
@@ -150,11 +202,156 @@ class AppState {
     await db.setMeta('seed', b64u(id.seed));
     this.setIdentity(id);
     // Re-scan held envelopes: a restored identity may already have mail waiting.
+    this.rescan();
+    // Prekey first (no profile yet, so nothing is published), then one profile carrying it.
+    await this.rotatePrekeys();
+    if (name) await this.publishProfile(name);
+    this.changed();
+  }
+
+  private rescan() {
     const held = [...this.envelopes.values()];
     this.envelopes.clear();
     for (const env of held) this.ingest(env);
-    if (name) await this.publishSigned('profile', { name });
+  }
+
+  /** Publishes the profile with the current prekeys, keeping name and bio. */
+  async publishProfile(name?: string, bio?: string) {
+    if (!this.me) return;
+    const cur = this.profiles().get(this.me.id);
+    const n = name ?? cur?.name;
+    if (!n) return;
+    const b = bio ?? cur?.bio;
+    const keys = this.prekeys.slice(-2).map((k) => ({ k: k.pub, until: k.created + PREKEY_VALID }));
+    await this.publishSigned('profile', { name: n, ...(b ? { bio: b } : {}), ...(keys.length ? { keys } : {}) });
+  }
+
+  /** Weekly new prekey; secrets older than PREKEY_KEEP are destroyed. */
+  private async rotatePrekeys() {
+    const now = Date.now();
+    const newest = this.prekeys.at(-1);
+    const before = this.prekeys.length;
+    this.prekeys = this.prekeys.filter((k) => now - k.created < PREKEY_KEEP);
+    const rotate = !newest || now - newest.created > PREKEY_ROTATE;
+    if (rotate) this.prekeys.push({ ...newPrekey(), created: now });
+    if (rotate || this.prekeys.length !== before) await db.setMeta('prekeys', this.prekeys);
+    if (rotate) await this.publishProfile();
+  }
+
+  /** The recipient's newest published prekey that is still valid. */
+  private prekeyOf(id: string): string | undefined {
+    const now = Date.now();
+    return this.profiles()
+      .get(id)
+      ?.keys?.filter((k) => k.until > now)
+      .sort((a, b) => b.until - a.until)[0]?.k;
+  }
+
+  // --- PIN lock --------------------------------------------------------------------
+
+  /** Returns false for a wrong PIN. The duress PIN silently wipes everything and opens an empty account. */
+  async unlock(pin: string): Promise<boolean> {
+    const lock = await db.getMeta<LockedSeed>('lock');
+    if (!lock) return false;
+    const seed = await unlockSeed(lock, pin);
+    if (seed) {
+      this.setIdentity(identityFromSeed(seed));
+      this.locked = false;
+      this.rescan();
+      await this.rotatePrekeys();
+      this.changed();
+      return true;
+    }
+    const duress = await db.getMeta<{ salt: string; v: string; n: number }>('duress');
+    if (duress && (await pinVerifier(pin, duress.salt, duress.n)) === duress.v) {
+      native?.wipe();
+      await db.wipeAll();
+      this.envelopes.clear();
+      this.messages.clear();
+      this.setGroups([]);
+      this.prekeys = [];
+      this.hasPin = false;
+      this.locked = false;
+      await this.createAccount('');
+      return true;
+    }
+    return false;
+  }
+
+  async setPin(pin: string, duressPin?: string) {
+    if (!this.me) return;
+    await db.setMeta('lock', await lockSeed(this.me.seed, pin));
+    await db.deleteMeta('seed');
+    if (duressPin) {
+      const salt = b64u(randomBytes(16));
+      await db.setMeta('duress', { salt, v: await pinVerifier(duressPin, salt), n: 15 });
+    } else {
+      await db.deleteMeta('duress');
+    }
+    this.hasPin = true;
     this.changed();
+  }
+
+  async removePin() {
+    if (!this.me) return;
+    await db.setMeta('seed', b64u(this.me.seed));
+    await db.deleteMeta('lock');
+    await db.deleteMeta('duress');
+    this.hasPin = false;
+    this.changed();
+  }
+
+  // --- groups, timers, verification ------------------------------------------------
+
+  private setGroups(list: GroupInvite[]) {
+    this.groups = new Map(list.map((g) => [g.id, g]));
+    this.groupTags = new Map(list.map((g) => [groupTag(g.id), g.id]));
+  }
+
+  private async addGroup(g: GroupInvite) {
+    if (this.groups.has(g.id)) return;
+    this.setGroups([...this.groups.values(), g]);
+    await db.setMeta('groups', [...this.groups.values()]);
+    // Messages for this group may already be on this device.
+    for (const env of this.envelopes.values()) if (env.to === groupTag(g.id)) this.ingestGroup(env, g);
+  }
+
+  async createGroup(name: string, members: string[]): Promise<string> {
+    if (!this.me) throw new Error('no identity');
+    const g: GroupInvite = { id: b64u(randomBytes(16)), key: b64u(randomBytes(32)), name, members: [this.me.id, ...members] };
+    await this.addGroup(g);
+    for (const m of members) await this.sendDirect(m, { text: '', invite: g });
+    this.changed();
+    return g.id;
+  }
+
+  async sendGroup(groupId: string, content: { text: string; image?: string }) {
+    const g = this.groups.get(groupId);
+    if (!this.me || !g) throw new Error('unknown group');
+    const ttl = this.ttls[`g:${groupId}`] || undefined;
+    const env = createGroupMessage(this.me, g, content, { ttl });
+    const sent: db.SentMessage = { id: env.id, from: this.me.id, to: groupId, group: groupId, ts: env.ts, exp: env.exp, ...content };
+    this.messages.set(env.id, { ...sent, exp: env.exp, mine: true });
+    await db.putSent(sent);
+    await this.publish(env);
+  }
+
+  async setTtl(key: string, ttl: number) {
+    this.ttls = { ...this.ttls, [key]: ttl };
+    await db.setMeta('ttls', this.ttls);
+    this.changed();
+  }
+
+  async setVerified(id: string) {
+    this.verified.add(id);
+    await db.setMeta('verified', [...this.verified]);
+    this.changed();
+  }
+
+  private ingestGroup(env: Envelope, g: GroupInvite) {
+    const m = openGroupMessage(g, env);
+    if (!m || !this.me || m.from === this.me.id) return;
+    this.messages.set(env.id, { from: m.from, to: g.id, ts: m.ts, text: m.text, image: m.image, id: env.id, mine: false, exp: env.exp, group: g.id });
   }
 
   backupCode(): string {
@@ -173,8 +370,13 @@ class AppState {
     if (this.envelopes.has(env.id)) return false;
     this.envelopes.set(env.id, env);
     if (this.me && env.kind === 'dm' && env.to === this.myTag) {
-      const m = openDirect(this.me, env);
-      if (m) this.messages.set(env.id, { ...m, id: env.id, mine: false });
+      const m = openDirect(this.me, env, this.prekeys.map((k) => k.secret));
+      if (m) {
+        if (m.invite) void this.addGroup(m.invite);
+        else this.messages.set(env.id, { ...m, id: env.id, mine: false, exp: env.exp });
+      }
+    } else if (env.kind === 'dm' && env.to && this.groupTags.has(env.to)) {
+      this.ingestGroup(env, this.groups.get(this.groupTags.get(env.to)!)!);
     }
     return true;
   }
@@ -211,11 +413,12 @@ class AppState {
     return this.publish(createSigned(this.me, kind, body));
   }
 
-  async sendDirect(to: string, content: { text: string; image?: string }) {
+  async sendDirect(to: string, content: { text: string; image?: string; invite?: GroupInvite }) {
     if (!this.me) throw new Error('no identity');
-    const env = createDirect(this.me, to, content);
-    const sent: db.SentMessage = { id: env.id, from: this.me.id, to, ts: env.ts, ...content };
-    this.messages.set(env.id, { ...sent, mine: true });
+    const env = createDirect(this.me, to, content, { prekey: this.prekeyOf(to), ttl: this.ttls[to] || undefined });
+    if (content.invite) return this.publish(env);
+    const sent: db.SentMessage = { id: env.id, from: this.me.id, to, ts: env.ts, exp: env.exp, ...content };
+    this.messages.set(env.id, { ...sent, exp: env.exp, mine: true });
     await db.putSent(sent);
     await this.publish(env);
   }
@@ -416,9 +619,11 @@ class AppState {
   /** Conversations keyed by the other person's ID, newest message last. */
   conversations(): Map<string, ChatMessage[]> {
     const out = new Map<string, ChatMessage[]>();
+    const now = Date.now();
     for (const m of this.messages.values()) {
-      const other = m.mine ? m.to : m.from;
-      if (this.blocked.has(other)) continue;
+      if (m.exp <= now) continue;
+      const other = m.group ? `g:${m.group}` : m.mine ? m.to : m.from;
+      if (!m.group && this.blocked.has(other)) continue;
       const list = out.get(other) ?? [];
       list.push(m);
       out.set(other, list);

@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@spirchat/protocol": "*",
-    "preact": "^10.29.0"
+    "jsqr": "^1.4.0",
+    "preact": "^10.29.0",
+    "qrcode-generator": "^1.5.2"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.0",

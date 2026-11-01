@@ -1,14 +1,19 @@
 import {
+  groupOpen,
+  groupSeal,
+  groupTag,
   type Identity,
   leadingZeroBits,
   mailboxTag,
   open,
+  openWithKey,
   seal,
+  sealToKey,
   sha256,
   sign,
   verify,
 } from './crypto.ts';
-import { b64u, canonicalJson, concat, fromUtf8, utf8 } from './encoding.ts';
+import { b64u, canonicalJson, concat, fromB64u, fromUtf8, utf8 } from './encoding.ts';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -42,9 +47,17 @@ export const RULES: Record<Kind, KindRules> = {
 /** Tolerated clock skew: phones in a crisis often have wrong clocks. */
 export const MAX_FUTURE_SKEW = DAY;
 
+/** A published prekey: X25519 public key and the time after which senders stop using it. */
+export interface PublishedKey {
+  k: string;
+  until: number;
+}
+
 export interface ProfileBody {
   name: string;
   bio?: string;
+  /** Current prekeys; senders encrypt to the newest one still valid. */
+  keys?: PublishedKey[];
 }
 /**
  * Where an envelope is relevant: a path of slugs from wide to narrow, e.g. "baghdad" or
@@ -117,9 +130,27 @@ export interface Envelope {
   id: string;
 }
 
+/** Sent inside a private message to add someone to a private group. */
+export interface GroupInvite {
+  id: string;
+  /** base64url 32-byte symmetric key. */
+  key: string;
+  name: string;
+  members: string[];
+}
+
 export interface DirectMessage {
   from: string;
   to: string;
+  ts: number;
+  text: string;
+  image?: string;
+  invite?: GroupInvite;
+}
+
+export interface GroupMessage {
+  from: string;
+  group: string;
   ts: number;
   text: string;
   image?: string;
@@ -175,27 +206,46 @@ export function createSigned<K extends SignedKind>(
 }
 
 function directPayload(m: DirectMessage) {
-  const { from, to, ts, text, image } = m;
-  return utf8(canonicalJson({ from, to, ts, text, image }));
+  const { from, to, ts, text, image, invite } = m;
+  return utf8(canonicalJson({ from, to, ts, text, image, invite }));
 }
 
+/**
+ * A private message. If `prekey` (the recipient's current published prekey) is given, the
+ * message is sealed to it, so it stays unreadable once the recipient deletes that prekey.
+ */
 export function createDirect(
   identity: Identity,
   recipientId: string,
-  content: { text: string; image?: string },
-  opts: CreateOptions = {},
+  content: { text: string; image?: string; invite?: GroupInvite },
+  opts: CreateOptions & { prekey?: string } = {},
 ): Envelope {
   const t = times('dm', opts);
   const msg: DirectMessage = { from: identity.id, to: recipientId, ts: t.ts, ...content };
-  const inner = { ...msg, sig: sign(identity, directPayload(msg)) };
-  const { epk, ct } = seal(recipientId, utf8(JSON.stringify(inner)));
+  const inner = utf8(JSON.stringify({ ...msg, sig: sign(identity, directPayload(msg)) }));
+  const { epk, ct } = opts.prekey ? sealToKey(fromB64u(opts.prekey), inner) : seal(recipientId, inner);
   return finish({ v: PROTOCOL_VERSION, kind: 'dm', ...t, to: mailboxTag(recipientId), epk, ct });
 }
 
-/** Decrypts and authenticates a DM addressed to `identity`, or returns null. */
-export function openDirect(identity: Identity, env: Envelope): DirectMessage | null {
+function isInvite(v: unknown): v is GroupInvite {
+  const g = v as GroupInvite;
+  return (
+    typeof g === 'object' && g !== null && typeof g.id === 'string' && typeof g.key === 'string' &&
+    typeof g.name === 'string' && Array.isArray(g.members) && g.members.every((m) => typeof m === 'string')
+  );
+}
+
+/**
+ * Decrypts and authenticates a DM addressed to `identity`, or returns null. `prekeys` are
+ * the secrets of this identity's live prekeys, tried after the identity key.
+ */
+export function openDirect(identity: Identity, env: Envelope, prekeys: string[] = []): DirectMessage | null {
   if (env.kind !== 'dm' || !env.epk || !env.ct || env.to !== mailboxTag(identity.id)) return null;
-  const plain = open(identity, env.epk, env.ct);
+  let plain = open(identity, env.epk, env.ct);
+  for (const k of prekeys) {
+    if (plain) break;
+    plain = openWithKey(fromB64u(k), env.epk, env.ct);
+  }
   if (!plain) return null;
   try {
     const inner = JSON.parse(fromUtf8(plain)) as DirectMessage & { sig: string };
@@ -203,7 +253,46 @@ export function openDirect(identity: Identity, env: Envelope): DirectMessage | n
     if (inner.to !== identity.id || inner.ts !== env.ts) return null;
     const msg: DirectMessage = { from: inner.from, to: inner.to, ts: inner.ts, text: inner.text };
     if (typeof inner.image === 'string') msg.image = inner.image;
+    if (inner.invite !== undefined) {
+      if (!isInvite(inner.invite)) return null;
+      msg.invite = inner.invite;
+    }
     if (!verify(msg.from, directPayload(msg), inner.sig)) return null;
+    return msg;
+  } catch {
+    return null;
+  }
+}
+
+function groupPayload(m: GroupMessage) {
+  const { from, group, ts, text, image } = m;
+  return utf8(canonicalJson({ from, group, ts, text, image }));
+}
+
+/** A message to a private group, sealed with the group key and signed by the sender. */
+export function createGroupMessage(
+  identity: Identity,
+  group: { id: string; key: string },
+  content: { text: string; image?: string },
+  opts: CreateOptions = {},
+): Envelope {
+  const t = times('dm', opts);
+  const msg: GroupMessage = { from: identity.id, group: group.id, ts: t.ts, ...content };
+  const inner = utf8(JSON.stringify({ ...msg, sig: sign(identity, groupPayload(msg)) }));
+  const { epk, ct } = groupSeal(fromB64u(group.key), inner);
+  return finish({ v: PROTOCOL_VERSION, kind: 'dm', ...t, to: groupTag(group.id), epk, ct });
+}
+
+export function openGroupMessage(group: { id: string; key: string }, env: Envelope): GroupMessage | null {
+  if (env.kind !== 'dm' || !env.epk || !env.ct || env.to !== groupTag(group.id)) return null;
+  const plain = groupOpen(fromB64u(group.key), env.epk, env.ct);
+  if (!plain) return null;
+  try {
+    const inner = JSON.parse(fromUtf8(plain)) as GroupMessage & { sig: string };
+    if (inner.group !== group.id || inner.ts !== env.ts || typeof inner.text !== 'string') return null;
+    const msg: GroupMessage = { from: inner.from, group: inner.group, ts: inner.ts, text: inner.text };
+    if (typeof inner.image === 'string') msg.image = inner.image;
+    if (!verify(msg.from, groupPayload(msg), inner.sig)) return null;
     return msg;
   } catch {
     return null;
@@ -255,6 +344,17 @@ export function validateBody(kind: Kind, body: unknown): string | null {
     case 'profile':
       if (!isStr(b.name, 40, 1)) return 'profile.name must be 1-40 chars';
       if (b.bio !== undefined && !isStr(b.bio, 160)) return 'profile.bio too long';
+      if (b.keys !== undefined) {
+        const ok =
+          Array.isArray(b.keys) &&
+          b.keys.length <= 3 &&
+          b.keys.every(
+            (k: unknown) =>
+              typeof k === 'object' && k !== null &&
+              isStr((k as PublishedKey).k, 43, 43) && Number.isSafeInteger((k as PublishedKey).until),
+          );
+        if (!ok) return 'profile.keys invalid';
+      }
       return null;
     case 'post':
       if (!isStr(b.text, 2000)) return 'post.text too long';

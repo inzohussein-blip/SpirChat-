@@ -9,6 +9,7 @@ import { People } from './views/people.tsx';
 import { Me } from './views/me.tsx';
 import { Onboarding } from './views/onboarding.tsx';
 import { SosDialog } from './views/sos.tsx';
+import { PinScreen } from './views/lock.tsx';
 
 export type Tab = 'feed' | 'rooms' | 'chats' | 'people' | 'me';
 
@@ -46,6 +47,7 @@ export function App() {
   const [peer, setPeer] = useState<string | null>(null);
   const [sos, setSos] = useState(false);
 
+  if (app.locked) return <PinScreen />;
   if (!app.me) return <Onboarding />;
 
   const openChat = (id: string) => {

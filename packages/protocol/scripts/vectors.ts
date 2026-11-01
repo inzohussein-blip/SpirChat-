@@ -20,6 +20,7 @@ const opts = { now: NOW - 60_000 };
 
 const valid: Record<string, Envelope> = {
   profile: createSigned(alice, 'profile', { name: 'علي 🌙', bio: 'quote " backslash \\ tab \t newline \n ctrl \u0001' }, opts),
+  profileKeys: createSigned(alice, 'profile', { name: 'a', keys: [{ k: 'A'.repeat(43), until: NOW + 1 }] }, opts),
   post: createSigned(alice, 'post', { text: 'مرحبا بغداد', thumb: 'data:image/webp;base64,AAAA' }, opts),
   room: createSigned(alice, 'room', { room: 'الكرادة-52', text: 'hello' }, opts),
   sos: createSigned(alice, 'sos', { text: 'help', loc: { lat: 33.312, lon: 44.361 } }, opts),
@@ -38,6 +39,10 @@ const invalid: Record<string, unknown> = {
   extraField: { ...valid.post!, extra: 1 },
   badVersion: tamper(valid.post!, { v: 2 }),
   dmWithBody: { ...valid.dm!, body: {} },
+  badProfileKeys: (() => {
+    const e = createSigned(alice, 'profile', { name: 'a' }, opts);
+    return { ...e, body: { name: 'a', keys: [{ k: 'short', until: 1 }] } };
+  })(),
   expired: createSigned(alice, 'sos', { text: 'old' }, { now: NOW - 10_000, ttl: 5_000 }),
   future: createSigned(alice, 'sos', { text: 'later' }, { now: NOW + 3 * 86400_000 }),
 };
