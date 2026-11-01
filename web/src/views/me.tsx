@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { type AlertBody, fingerprint } from '@spirchat/protocol';
+import { GOVERNORATES, slugify } from '../lib/areas.ts';
 import { type Lang, lang, setLang, t } from '../lib/i18n.ts';
 import { native } from '../lib/native.ts';
 import { app, useApp } from '../lib/state.ts';
@@ -154,6 +155,63 @@ function Internet() {
   );
 }
 
+function AreaForm() {
+  const app = useApp();
+  const [gov, hood] = app.area ? [app.area.split('/')[0]!, app.area.split('/')[1] ?? ''] : ['', ''];
+  const [g, setG] = useState(gov);
+  const [h, setH] = useState(hood);
+  const [saved, setSaved] = useState(false);
+  return (
+    <form
+      class="card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const area = g ? [g, slugify(h)].filter(Boolean).join('/') : '';
+        void app.setArea(area).then(() => setSaved(true));
+      }}
+    >
+      <h2>📍 {t('myArea')}</h2>
+      <p class="hint">{t('myAreaHint')}</p>
+      <label>
+        {t('governorate')}
+        <select value={g} onChange={(e) => setG(e.currentTarget.value)}>
+          <option value="">—</option>
+          {GOVERNORATES.map((x) => (
+            <option key={x.slug} value={x.slug}>
+              {lang === 'ar' ? x.ar : x.en}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {t('neighbourhood')}
+        <input value={h} maxLength={32} placeholder={t('neighbourhoodExample')} onInput={(e) => setH(e.currentTarget.value)} />
+      </label>
+      <button class="primary">{saved ? t('saved') : t('save')}</button>
+    </form>
+  );
+}
+
+function Blocked() {
+  const app = useApp();
+  if (!app.blocked.size) return null;
+  return (
+    <section class="card">
+      <h2>🚫 {t('blockedPeople')}</h2>
+      <ul class="hub-list">
+        {[...app.blocked].map((id) => (
+          <li key={id}>
+            <span>{app.nameOf(id)}</span>
+            <button class="link" onClick={() => void app.block(id, false)}>
+              {t('unblock')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function GetApp() {
   const [available, setAvailable] = useState(false);
   useEffect(() => {
@@ -242,6 +300,7 @@ export function Me() {
   return (
     <div class="me">
       <ProfileForm />
+      <AreaForm />
       {native ? <Mesh /> : <GetApp />}
       <Internet />
       {app.alertKeys.has(me.id) && <AlertForm />}
@@ -277,6 +336,7 @@ export function Me() {
         <p class="hint">{t('carryHint')}</p>
       </section>
       <DataMule />
+      <Blocked />
       {native && <HubAddress />}
       <section class="card">
         <h2>{t('language')}</h2>

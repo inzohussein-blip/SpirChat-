@@ -175,3 +175,17 @@ hr { border: none; border-block-start: 1px solid var(--border); margin-block: 0.
 .hub-list { list-style: none; padding: 0; margin: 0.5rem 0; }
 .hub-list li { display: flex; justify-content: space-between; align-items: center; padding-block: 0.25rem; overflow-wrap: anywhere; }
 .file-btn.wide, button.wide { margin-block: 0.25rem; }
+
+.chips { display: flex; gap: 0.4rem; margin-block-end: 0.6rem; }
+.chip { border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
+.chip.on { background: var(--brand); color: var(--brand-ink); border-color: transparent; }
+.scope { width: auto; padding: 0.4rem; font-size: 0.85rem; }
+.author-menu { position: relative; display: inline-flex; gap: 0.3rem; align-items: center; }
+.author-menu .more { color: var(--muted); font-weight: 400; }
+.author-menu .menu { position: absolute; inset-block-start: 1.6rem; inset-inline-start: 0; z-index: 5; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.25rem; box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); }
+.author-menu .menu button { border: none; white-space: nowrap; }
+.post-img { position: relative; }
+.post-img img.thumb { filter: blur(1px); }
+.img-hint { position: absolute; inset-block-end: 0.5rem; inset-inline-start: 0.5rem; background: rgb(0 0 0 / 0.6); color: #fff; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; }
+.area { color: var(--muted); }
+.block-btn { margin-inline-start: auto; }

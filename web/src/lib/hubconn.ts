@@ -1,4 +1,4 @@
-import type { Envelope, HubMessage } from '@spirchat/protocol';
+import { type Bucket, differingDays, type Envelope, type HubMessage } from '@spirchat/protocol';
 import * as db from './db.ts';
 
 export type HubState = 'offline' | 'connecting' | 'syncing' | 'online';
@@ -12,8 +12,12 @@ export interface HubView {
 
 export interface HubHandlers {
   receive(env: Envelope): void;
-  /** IDs to offer once caught up (everything this device carries, urgent first). */
-  carried(): string[];
+  /** Summary of what this device carries. */
+  summary(): Bucket[];
+  /** IDs this device carries that were created on the given days. */
+  idsOnDays(days: number[]): string[];
+  /** Called once per connection after catching up (images to upload, etc.). */
+  synced(base: string): void;
   get(id: string): Envelope | undefined;
   delivered(ids: string[]): void;
   alertKeys(keys: string[]): void;
@@ -106,9 +110,19 @@ export class HubConn {
       case 'synced':
         if (this.hubId) void db.setMeta(`cursor:${this.url}`, { hubId: this.hubId, seq: m.seq });
         this.set('online');
-        this.offered = this.h.carried();
+        this.send({ t: 'sum', buckets: this.h.summary() });
+        this.h.synced(httpUrl(this.url));
+        return;
+      case 'sum': {
+        // Only days whose summaries differ need their IDs offered.
+        const mine = this.h.summary();
+        const days = differingDays(mine, m.buckets);
+        const differing = new Set(days);
+        this.h.delivered(this.h.idsOnDays(mine.map(([d]) => d).filter((d) => !differing.has(d))));
+        this.offered = this.h.idsOnDays(days);
         if (this.offered.length) this.send({ t: 'have', ids: this.offered });
         return;
+      }
       case 'want': {
         const wanted = new Set(m.ids);
         this.h.delivered(this.offered.filter((id) => !wanted.has(id)));

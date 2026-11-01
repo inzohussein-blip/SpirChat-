@@ -60,6 +60,18 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
             🔒 {fingerprint(peer)}
           </small>
         </div>
+        <button
+          class="link block-btn"
+          title={t('block')}
+          onClick={() => {
+            if (confirm(t('blockConfirm'))) {
+              void app.block(peer, true);
+              onBack();
+            }
+          }}
+        >
+          🚫
+        </button>
       </header>
       <p class="hint">{t('encrypted')}</p>
       <div class="messages">

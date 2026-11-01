@@ -7,6 +7,9 @@ export interface NativeBridge {
   storeSince(since: string): string;
   /** '' when accepted, otherwise the rejection reason. */
   publish(json: string): string;
+  /** "mime;base64" if the image is in the engine; otherwise "" and phones/hubs are asked for it. */
+  getBlob(id: string): string;
+  putBlob(id: string, mime: string, base64: string): boolean;
   /** JSON array: which of the given IDs a hub has confirmed. */
   delivered(idsJson: string): string;
   /** JSON {hubs: [{url, internet, state, name}], peers, mesh, alertKeys}. */

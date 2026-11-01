@@ -12,12 +12,15 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = (e) => {
       const d = req.result;
-      d.createObjectStore('envelopes', { keyPath: 'id' });
-      d.createObjectStore('sent', { keyPath: 'id' });
-      d.createObjectStore('meta');
+      if (e.oldVersion < 1) {
+        d.createObjectStore('envelopes', { keyPath: 'id' });
+        d.createObjectStore('sent', { keyPath: 'id' });
+        d.createObjectStore('meta');
+      }
+      if (e.oldVersion < 2) d.createObjectStore('blobs', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -62,6 +65,25 @@ export async function allSent(): Promise<SentMessage[]> {
 
 export async function putSent(m: SentMessage): Promise<void> {
   await done((await store('sent', 'readwrite')).put(m));
+}
+
+export interface StoredBlob {
+  id: string;
+  mime: string;
+  data: Uint8Array;
+  added: number;
+}
+
+export async function putBlob(b: StoredBlob): Promise<void> {
+  await done((await store('blobs', 'readwrite')).put(b));
+}
+
+export async function getBlob(id: string): Promise<StoredBlob | undefined> {
+  return done((await store('blobs')).get(id) as IDBRequest<StoredBlob | undefined>);
+}
+
+export async function blobIds(): Promise<string[]> {
+  return done((await store('blobs')).getAllKeys() as IDBRequest<string[]>);
 }
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {

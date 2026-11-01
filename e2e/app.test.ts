@@ -110,3 +110,72 @@ test('a device carries data between two hubs that never connect', async () => {
   assert.equal(info.byKind.post, 1, 'hub B received the carried post');
   writeFileSync(file, '');
 });
+
+test('images travel separately: thumbnail with the post, full image fetched on tap', async () => {
+  const hub = await startHub('Karrada-1');
+  hubs.push(hub);
+  const { writeFileSync: write } = await import('node:fs');
+  // A small valid PNG (red 8x8) written to disk for the file picker.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHQwSAPnjP8H6c8HyAAAAAElFTkSuQmCC',
+    'base64',
+  );
+  const file = join(tmpdir(), `photo-${Date.now()}.png`);
+  write(file, png);
+
+  const a = await phone(hub.url);
+  await signUp(a, 'مصوّر');
+  await a.waitForSelector('.status-online');
+  await a.setInputFiles('.composer input[type=file]', file);
+  await a.waitForSelector('.composer .preview');
+  await a.click('.composer button.primary');
+  await a.waitForSelector('article.post img');
+
+  // The hub holds the image separately from the post.
+  let info: { byKind: Record<string, number> } = { byKind: {} };
+  for (let i = 0; i < 50 && !info.byKind.post; i++) {
+    info = await hub.info();
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.equal(info.byKind.post, 1);
+
+  const b = await phone(hub.url);
+  await signUp(b, 'مشاهد');
+  await b.waitForSelector('article.post .img-hint');
+  const before = await b.getAttribute('article.post img', 'src');
+  assert.match(before!, /^data:image\//, 'thumbnail first');
+  await b.click('article.post .post-img');
+  await b.waitForFunction(() => document.querySelector('article.post img')?.getAttribute('src')?.startsWith('blob:'));
+});
+
+test('area filter and blocking', async () => {
+  const hub = await startHub('Baghdad');
+  hubs.push(hub);
+  const basra = await phone(hub.url);
+  await signUp(basra, 'بصري');
+  await tab(basra, 5);
+  await basra.selectOption('select:near(:text("المحافظة"))', 'basra');
+  await basra.click('form:has(select) button.primary');
+  await tab(basra, 1);
+  await basra.selectOption('.composer .scope', 'gov');
+  await basra.fill('.composer textarea', 'خبر من البصرة');
+  await basra.click('.composer button.primary');
+  await basra.waitForSelector('article.post');
+
+  const baghdad = await phone(hub.url);
+  await signUp(baghdad, 'بغدادي');
+  await baghdad.waitForSelector('article.post');
+  await tab(baghdad, 5);
+  await baghdad.selectOption('select:near(:text("المحافظة"))', 'baghdad');
+  await baghdad.click('form:has(select) button.primary');
+  await tab(baghdad, 1);
+  await baghdad.waitForSelector('.chips');
+  assert.equal(await baghdad.locator('article.post').count(), 0, 'Basra post hidden under "near me"');
+  await baghdad.click('.chip:not(.on)');
+  assert.equal(await baghdad.locator('article.post').count(), 1);
+
+  baghdad.once('dialog', (d) => d.accept());
+  await baghdad.click('article.post .more');
+  await baghdad.click('.menu button');
+  await baghdad.waitForSelector('article.post', { state: 'detached' });
+});

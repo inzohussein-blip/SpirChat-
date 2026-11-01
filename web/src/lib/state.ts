@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
+  type Area,
+  areaOf,
+  areasOverlap,
   type BodyByKind,
+  dayOf,
   createDirect,
   createSigned,
   type DirectMessage,
@@ -16,10 +20,13 @@ import {
   priorityOf,
   type ProfileBody,
   type SignedKind,
+  summarize,
   validateEnvelope,
 } from '@spirchat/protocol';
 import * as db from './db.ts';
 import { HubConn, type HubView, wsUrl } from './hubconn.ts';
+import type { Compressed } from './image.ts';
+import { saveMedia, uploadMissing } from './media.ts';
 import { native } from './native.ts';
 
 export type HubStatus = 'offline' | 'connecting' | 'syncing' | 'online';
@@ -39,6 +46,9 @@ export interface Settings {
   background: boolean;
   mesh: boolean;
 }
+
+/** Who sees a post: the neighbourhood, the governorate, or everyone. */
+export type Scope = 'hood' | 'gov' | 'all';
 
 const BUILD_INTERNET_HUBS: string[] = ((import.meta.env.VITE_INTERNET_HUBS as string | undefined) ?? '')
   .split(',')
@@ -66,6 +76,10 @@ class AppState {
   peers = 0;
   meshRunning = false;
   settings: Settings = DEFAULT_SETTINGS;
+  /** The user's area, e.g. "baghdad/الكرادة"; '' if not set. */
+  area: Area = '';
+  /** Authors whose content this device hides. */
+  blocked = new Set<string>();
   version = 0;
 
   private listeners = new Set<() => void>();
@@ -99,6 +113,8 @@ class AppState {
     const seed = await db.getMeta<string>('seed');
     if (seed) this.setIdentity(identityFromSeed(fromB64u(seed)));
     this.alertKeys = new Set((await db.getMeta<string[]>('alertKeys')) ?? []);
+    this.area = (await db.getMeta<string>('area')) ?? '';
+    this.blocked = new Set((await db.getMeta<string[]>('blocked')) ?? []);
     const now = Date.now();
     const expired: string[] = [];
     for (const env of await db.allEnvelopes()) {
@@ -204,14 +220,61 @@ class AppState {
     await this.publish(env);
   }
 
-  /** IDs of everything we carry, urgent first. */
-  private carriedIds(): string[] {
+  private live(): Envelope[] {
     const now = Date.now();
-    return [...this.envelopes.values()]
-      .filter((e) => e.exp > now)
+    return [...this.envelopes.values()].filter((e) => e.exp > now);
+  }
+
+  /** IDs carried that were created on the given days, urgent first. */
+  private idsOnDays(days: number[]): string[] {
+    const set = new Set(days);
+    return this.live()
+      .filter((e) => set.has(dayOf(e.ts)))
       .sort((a, b) => priorityOf(a) - priorityOf(b) || b.ts - a.ts)
       .slice(0, MAX_HAVE_IDS)
       .map((e) => e.id);
+  }
+
+  /** Area for a new post at the chosen scope. */
+  areaFor(scope: Scope): Area | undefined {
+    if (!this.area || scope === 'all') return undefined;
+    return scope === 'gov' ? this.area.split('/')[0] : this.area;
+  }
+
+  async publishPost(text: string, image: Compressed | null, scope: Scope) {
+    const area = this.areaFor(scope);
+    const body: BodyByKind['post'] = { text, ...(area ? { area } : {}) };
+    if (image) {
+      body.media = await saveMedia(image.bytes, image.mime);
+      body.thumb = image.thumb;
+      for (const base of this.hubBases()) void uploadMissing(base);
+    }
+    await this.publishSigned('post', body);
+  }
+
+  /** HTTP base URLs of hubs online right now (for fetching images). */
+  hubBases(): string[] {
+    const online = this.hubs.filter((h) => h.state === 'online').map((h) => h.url);
+    // In the browser the serving hub is same-origin.
+    return native ? online : online.map((u, i) => (i === 0 && !this.hubs[0]?.internet ? '' : u));
+  }
+
+  async setArea(area: Area) {
+    this.area = area;
+    await db.setMeta('area', area);
+    this.changed();
+  }
+
+  async block(id: string, on: boolean) {
+    if (on) this.blocked.add(id);
+    else this.blocked.delete(id);
+    await db.setMeta('blocked', [...this.blocked]);
+    this.changed();
+  }
+
+  /** Whether an envelope is relevant to the user's area (no area on either side counts as yes). */
+  nearMe(env: Envelope): boolean {
+    return areasOverlap(this.area || undefined, areaOf(env));
   }
 
   /** Imports an NDJSON bundle (from another hub or phone) through this device. */
@@ -243,7 +306,9 @@ class AppState {
     const secure = location.protocol === 'https:';
     const handlers = {
       receive: (env: Envelope) => this.receive(env),
-      carried: () => this.carriedIds(),
+      summary: () => summarize(this.live()),
+      idsOnDays: (days: number[]) => this.idsOnDays(days),
+      synced: (base: string) => void uploadMissing(base === httpBase(location.host) ? '' : base),
       get: (id: string) => this.envelopes.get(id),
       delivered: (ids: string[]) => {
         ids.forEach((id) => this.atHub.add(id));
@@ -329,7 +394,9 @@ class AppState {
   // --- derived views ------------------------------------------------------
 
   ofKind<K extends Envelope['kind']>(kind: K): Envelope[] {
-    return [...this.envelopes.values()].filter((e) => e.kind === kind).sort((a, b) => b.ts - a.ts);
+    return [...this.envelopes.values()]
+      .filter((e) => e.kind === kind && !(e.author && this.blocked.has(e.author)))
+      .sort((a, b) => b.ts - a.ts);
   }
 
   profiles(): Map<string, ProfileBody & { ts: number }> {
@@ -351,6 +418,7 @@ class AppState {
     const out = new Map<string, ChatMessage[]>();
     for (const m of this.messages.values()) {
       const other = m.mine ? m.to : m.from;
+      if (this.blocked.has(other)) continue;
       const list = out.get(other) ?? [];
       list.push(m);
       out.set(other, list);
@@ -363,6 +431,8 @@ class AppState {
     return env.kind === 'alert' && this.alertKeys.has(env.author!);
   }
 }
+
+const httpBase = (host: string) => `${location.protocol}//${host}`;
 
 export const app = new AppState();
 

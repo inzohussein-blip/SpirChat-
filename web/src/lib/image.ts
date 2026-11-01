@@ -44,10 +44,23 @@ function fit(src: ImageBitmap | HTMLImageElement, sides: number[], maxChars: num
   throw new Error(`image too large (${last.length})`);
 }
 
-export async function compressImage(file: File): Promise<{ image: string; thumb: string }> {
+export interface Compressed {
+  /** data: URL of the full image (inline in private messages). */
+  image: string;
+  /** Raw bytes and type of the same image (posts reference it by hash). */
+  bytes: Uint8Array;
+  mime: 'image/webp' | 'image/jpeg';
+  thumb: string;
+}
+
+export async function compressImage(file: File): Promise<Compressed> {
   const src = await loadBitmap(file);
+  const image = fit(src, [1080, 800, 600, 400], MAX_IMAGE_CHARS);
+  const comma = image.indexOf(',');
   return {
-    image: fit(src, [1080, 800, 600, 400], MAX_IMAGE_CHARS),
+    image,
+    bytes: Uint8Array.from(atob(image.slice(comma + 1)), (c) => c.charCodeAt(0)),
+    mime: image.startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg',
     thumb: fit(src, [200, 120], MAX_THUMB_CHARS),
   };
 }
