@@ -53,7 +53,7 @@ class PeerSyncTest {
 
     @Test
     fun privateMessagesAreNotPassedOnByRelayingPhones() {
-        val (a, b, c) = List(3) { Engine(MemoryStore()) }
+        val (a, b, c) = List(3) { Engine(MemoryStore()).apply { noteHubContact() } }
         link(a, b)
         link(b, c)
         val dm = fx.obj("dm")!!
@@ -89,8 +89,19 @@ class PeerSyncTest {
     }
 
     @Test
+    fun withoutHubsPrivateMessagesAreRelayedFreely() {
+        val (a, b, c) = List(3) { Engine(MemoryStore()) }
+        assertTrue(a.meshOnly())
+        link(a, b)
+        link(b, c)
+        val dm = fx.obj("dm")!!
+        assertIs<Accept.Added>(a.accept(dm, null))
+        assertTrue(c.store.contains(dm.str("id")!!), "no hub seen recently: flood so it gets through")
+    }
+
+    @Test
     fun privateMessagesReachOnlyALimitedNumberOfNearbyPhones() {
-        val origin = Engine(MemoryStore())
+        val origin = Engine(MemoryStore()).apply { noteHubContact() }
         val dm = fx.obj("dm")!!
         assertIs<Accept.Added>(origin.accept(dm, null))
         val reached = (1..10).count {

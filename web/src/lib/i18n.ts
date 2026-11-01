@@ -1,3 +1,5 @@
+import { ckb } from './i18n-ckb.ts';
+
 const ar = {
   appName: 'سبيرشات',
   tagline: 'تواصل بلا إنترنت',
@@ -74,7 +76,7 @@ const ar = {
   imported: 'تمت الإضافة',
   mesh: 'الاتصال المباشر بين الهواتف',
   meshHint:
-    'يتصل هاتفك تلقائياً بالهواتف القريبة (بلوتوث وواي فاي مباشر، حتى 100 متر تقريباً) ويتبادل معها الرسائل والمنشورات دون محطة. يعمل ما دام التطبيق مفتوحاً.',
+    'يتصل هاتفك تلقائياً بالهواتف القريبة (بلوتوث وواي فاي مباشر، حتى 100 متر تقريباً) ويتبادل معها الرسائل والمنشورات دون محطة، حتى والشاشة مطفأة إن فعّلت العمل في الخلفية.',
   meshOn: 'تشغيل',
   meshOff: 'إيقاف',
   nearby: 'هواتف قريبة متصلة',
@@ -240,7 +242,7 @@ const en: Record<Key, string> = {
   imported: 'Added',
   mesh: 'Direct phone-to-phone',
   meshHint:
-    'Your phone connects automatically to nearby phones (Bluetooth and Wi-Fi Direct, roughly 100 m) and swaps messages and posts with them, no hub needed. Works while the app is open.',
+    'Your phone connects automatically to nearby phones (Bluetooth and Wi-Fi Direct, roughly 100 m) and swaps messages and posts with them, no hub needed, even with the screen off if background running is on.',
   meshOn: 'Turn on',
   meshOff: 'Turn off',
   nearby: 'Nearby phones connected',
@@ -327,13 +329,16 @@ const en: Record<Key, string> = {
   stopRecord: 'Stop and send',
 };
 
-export type Lang = 'ar' | 'en';
-const dicts: Record<Lang, Record<Key, string>> = { ar, en };
+export type Lang = 'ar' | 'en' | 'ckb';
+const dicts: Record<Lang, Record<Key, string>> = { ar, en, ckb };
+
+/** Right-to-left scripts. */
+export const isRtl = (l: Lang) => l !== 'en';
 
 function initialLang(): Lang {
   try {
     const saved = localStorage.getItem('lang');
-    if (saved === 'ar' || saved === 'en') return saved;
+    if (saved === 'ar' || saved === 'en' || saved === 'ckb') return saved;
   } catch {
     // storage unavailable
   }
@@ -354,14 +359,15 @@ export function setLang(l: Lang) {
 
 export function applyDir() {
   document.documentElement.lang = lang;
-  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.documentElement.dir = isRtl(lang) ? 'rtl' : 'ltr';
 }
 
 export const t = (k: Key): string => dicts[lang][k];
 
 export function ago(ts: number): string {
   const s = Math.round((ts - Date.now()) / 1000);
-  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto', style: 'short' });
+  // Kurdish relative-time data is missing from many phones' ICU; Arabic script reads naturally.
+  const rtf = new Intl.RelativeTimeFormat(lang === 'ckb' ? ['ckb', 'ar'] : lang, { numeric: 'auto', style: 'short' });
   const a = Math.abs(s);
   if (a < 60) return rtf.format(s, 'second');
   if (a < 3600) return rtf.format(Math.round(s / 60), 'minute');

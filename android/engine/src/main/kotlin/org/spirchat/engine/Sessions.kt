@@ -164,6 +164,7 @@ class HubSession(
                 val seq = m.long("seq")
                 if (hubId != null && seq != null) engine.store.setMeta(cursorKey(), "$hubId|$seq")
                 state = State.ONLINE
+                engine.noteHubContact()
                 engine.addListener(forward)
                 link.send(Json.obj("t" to Json.str("sum"), "buckets" to Summary.toJson(engine.summary())).stringify())
                 onChange(this)

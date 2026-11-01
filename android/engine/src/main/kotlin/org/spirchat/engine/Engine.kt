@@ -64,6 +64,10 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
      * handed to a few nearby phones by its author and by phones that downloaded it from a hub,
      * and not passed on by phones that got it from another phone, so copies stay bounded
      * instead of growing with every hop. Hubs always get it.
+     *
+     * The limit only pays off where hubs exist: with no hubs, only flooding delivers (1% vs
+     * 100% in the simulation). So a phone that has not reached a hub for [ADAPTIVE_MS]
+     * passes every message on.
      */
     private val dmCopies = ConcurrentHashMap<String, Int>()
 
@@ -77,8 +81,20 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
     fun removeBlobFetcher(f: (String) -> Unit) = blobFetchers.remove(f)
     fun addBlobListener(l: (String) -> Unit) = blobListeners.add(l)
 
+    @Volatile private var lastHubContact: Long = store.getMeta("lastHub")?.toLongOrNull() ?: Long.MIN_VALUE / 2
+
+    /** Called when a hub session comes online. */
+    fun noteHubContact() {
+        lastHubContact = clock()
+        store.setMeta("lastHub", lastHubContact.toString())
+    }
+
+    /** True while no hub has been reached recently, so DMs are relayed without limit. */
+    fun meshOnly(): Boolean = clock() - lastHubContact > ADAPTIVE_MS
+
     /** True if one more nearby phone may receive this DM (and counts it). */
     fun takeDmCopy(id: String): Boolean {
+        if (meshOnly()) return true
         var allowed = false
         dmCopies.compute(id) { _, left ->
             val n = left ?: RELAY_DM_COPIES
@@ -144,6 +160,7 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
         const val OWN_DM_COPIES = 6
         const val HUB_DM_COPIES = 2
         const val RELAY_DM_COPIES = 0
+        const val ADAPTIVE_MS = 6 * 3_600_000L
         const val MAX_MEDIA_BYTES = 1_000_000
         val MEDIA_TYPES = setOf("image/webp", "image/jpeg")
 

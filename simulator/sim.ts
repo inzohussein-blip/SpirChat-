@@ -30,6 +30,11 @@ export interface Options {
    * hand each one to this many phones afterwards, so hubs seed their surroundings (spray).
    */
   hubCopies: number;
+  /**
+   * Adaptive (spray): a phone that has not been near a hub for this many hours relays
+   * without limit, since with no hubs around only flooding gets messages through. 0 = off.
+   */
+  adaptiveHours: number;
   /** Phone-to-phone range (Bluetooth/Wi-Fi Direct), metres. */
   phoneRange: number;
   /** Hub Wi-Fi range, metres. */
@@ -56,6 +61,7 @@ export const DEFAULTS: Options = {
   ownCopies: 6,
   relayCopies: 0,
   hubCopies: 2,
+  adaptiveHours: 6,
   phoneRange: 50,
   hubRange: 300,
   perContact: 20,
@@ -96,6 +102,8 @@ interface Phone {
   mobile: boolean;
   /** message id -> copies left to hand out (Infinity for epidemic). */
   carry: Map<number, number>;
+  /** Last time this phone was near a hub (seconds), -Infinity if never. */
+  lastHub: number;
 }
 
 interface Message {
@@ -113,7 +121,7 @@ export function simulate(partial: Partial<Options> = {}): Result {
   const phones: Phone[] = Array.from({ length: o.phones }, () => {
     const x = rand() * o.size;
     const y = rand() * o.size;
-    return { x, y, tx: x, ty: y, v: 0, mobile: rand() < o.mobile, carry: new Map() };
+    return { x, y, tx: x, ty: y, v: 0, mobile: rand() < o.mobile, carry: new Map(), lastHub: -Infinity };
   });
   const hubs = Array.from({ length: o.hubs }, () => ({ x: rand() * o.size, y: rand() * o.size, has: new Set<number>() }));
   // Without a backbone each hub only holds what reached it directly.
@@ -178,6 +186,7 @@ export function simulate(partial: Partial<Options> = {}): Result {
       for (let i = 0; i < phones.length; i++) {
         const p = phones[i]!;
         if (Math.hypot(p.x - hub.x, p.y - hub.y) > o.hubRange) continue;
+        p.lastHub = now;
         for (const id of p.carry.keys()) store.add(id);
         for (const id of store) {
           const m = msgs[id]!;
@@ -221,9 +230,16 @@ export function simulate(partial: Partial<Options> = {}): Result {
 
     function exchange(from: Phone, to: Phone, toIndex: number) {
       let sent = 0;
+      const flooding =
+        o.strategy === 'epidemic' || (o.adaptiveHours > 0 && now - from.lastHub > o.adaptiveHours * 3600);
       for (const [id, budget] of from.carry) {
         if (sent >= o.perContact) break;
         if (to.carry.has(id)) continue;
+        if (flooding) {
+          give(to, id, o.strategy === 'epidemic' ? Infinity : o.relayCopies);
+          sent++;
+          continue;
+        }
         // A relay cannot tell which phone is the recipient (mailbox tags are opaque), so every
         // hand-over spends a copy, even to the recipient.
         if (budget <= 0) continue;

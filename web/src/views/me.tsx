@@ -179,7 +179,7 @@ function AreaForm() {
           <option value="">—</option>
           {GOVERNORATES.map((x) => (
             <option key={x.slug} value={x.slug}>
-              {lang === 'ar' ? x.ar : x.en}
+              {lang === 'en' ? x.en : lang === 'ckb' ? (x.ckb ?? x.ar) : x.ar}
             </option>
           ))}
         </select>
@@ -350,8 +350,10 @@ export function Me() {
           }}
         >
           <option value="ar">العربية</option>
+          <option value="ckb">کوردی (سۆرانی)</option>
           <option value="en">English</option>
         </select>
+        {lang === 'ckb' && <p class="warn">وەرگێڕانی کوردی هێشتا ڕەشنووسە و پێویستی بە پێداچوونەوەی کەسێکی کورد زمان هەیە.</p>}
       </section>
       <p class="hint">{t('safety')}</p>
       <button
