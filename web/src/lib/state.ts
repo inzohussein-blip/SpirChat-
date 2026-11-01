@@ -307,6 +307,7 @@ class AppState {
   private setGroups(list: GroupInvite[]) {
     this.groups = new Map(list.map((g) => [g.id, g]));
     this.groupTags = new Map(list.map((g) => [groupTag(g.id), g.id]));
+    native?.setGroupTags(JSON.stringify([...this.groupTags.keys()]));
   }
 
   private async addGroup(g: GroupInvite) {

@@ -30,7 +30,7 @@ object Notifier {
             if (source == null || foreground) return@addEnvelopeListener
             val myTag = Core.store.getMeta("myTag")
             when (env.str("kind")) {
-                "dm" -> if (myTag != null && env.str("to") == myTag) {
+                "dm" -> if (env.str("to").let { it != null && (it == myTag || it in groupTags()) }) {
                     show(app, DM_ID, SyncService.CHANNEL_MESSAGES, app.getString(R.string.notify_dm), null)
                 }
                 "sos" -> show(app, URGENT_ID, SyncService.CHANNEL_URGENT, app.getString(R.string.notify_sos), env.obj("body")?.str("text"))
@@ -64,6 +64,9 @@ object Notifier {
             // Notification permission revoked meanwhile.
         }
     }
+
+    private fun groupTags(): Set<String> =
+        (Core.store.getMeta("groupTags") ?: "").split(',').filter { it.isNotEmpty() }.toSet()
 
     fun clear(context: Context) {
         context.getSystemService(NotificationManager::class.java).apply {

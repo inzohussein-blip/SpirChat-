@@ -245,6 +245,12 @@ class MainActivity : ComponentActivity() {
         }
 
         @JavascriptInterface
+        fun setGroupTags(json: String) {
+            val tags = (Json.parse(json) as? Json.Arr)?.items?.mapNotNull { (it as? Json.Str)?.value }.orEmpty()
+            Core.store.setMeta("groupTags", tags.joinToString(","))
+        }
+
+        @JavascriptInterface
         fun startMesh() = runOnUiThread {
             val missing = Permissions.mesh().filterNot { Permissions.granted(this@MainActivity, it) }
             if (missing.isEmpty()) {

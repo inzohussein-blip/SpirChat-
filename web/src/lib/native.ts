@@ -17,6 +17,8 @@ export interface NativeBridge {
   settings(): string;
   updateSettings(json: string): string;
   setIdentity(tag: string, id: string): void;
+  /** JSON array of this device's private-group mailbox tags (for notifications). */
+  setGroupTags(json: string): void;
   startMesh(): void;
   stopMesh(): void;
   isMeshRunning(): boolean;
