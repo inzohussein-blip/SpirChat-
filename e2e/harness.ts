@@ -45,7 +45,7 @@ export async function startHub(name: string, env: Record<string, string> = {}): 
 let browser: Browser | null = null;
 
 export async function phone(url: string): Promise<Page> {
-  browser ??= await chromium.launch();
+  browser ??= await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
   const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.error('page error:', e.message));

@@ -60,9 +60,10 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
     val delivered: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /**
-     * Spray-and-wait for private messages: each DM is handed to a limited number of nearby
-     * phones (more if written here, fewer if relayed) instead of flooding every phone met.
-     * Hubs always get it.
+     * Spray-and-wait for private messages (see simulator/ and docs/simulation-ar.md): a DM is
+     * handed to a few nearby phones by its author and by phones that downloaded it from a hub,
+     * and not passed on by phones that got it from another phone, so copies stay bounded
+     * instead of growing with every hop. Hubs always get it.
      */
     private val dmCopies = ConcurrentHashMap<String, Int>()
 
@@ -119,7 +120,13 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
         val seq = synchronized(this) {
             store.put(id, env.str("kind")!!, Protocol.priorityOf(env), env.long("ts")!!, env.long("exp")!!, json)
         } ?: return Accept.Duplicate
-        if (env.str("kind") == "dm") dmCopies[id] = if (source == null) OWN_DM_COPIES else RELAY_DM_COPIES
+        if (env.str("kind") == "dm") {
+            dmCopies[id] = when {
+                source == null -> OWN_DM_COPIES
+                source.startsWith("hub:") -> HUB_DM_COPIES
+                else -> RELAY_DM_COPIES
+            }
+        }
         for (l in listeners) {
             try {
                 l.onEnvelope(seq, env, json, source)
@@ -135,7 +142,8 @@ class Engine(val store: EnvelopeStore, val clock: () -> Long = System::currentTi
     companion object {
         private const val GOSSIP_MAX_AGE = 3_600_000L
         const val OWN_DM_COPIES = 6
-        const val RELAY_DM_COPIES = 2
+        const val HUB_DM_COPIES = 2
+        const val RELAY_DM_COPIES = 0
         const val MAX_MEDIA_BYTES = 1_000_000
         val MEDIA_TYPES = setOf("image/webp", "image/jpeg")
 

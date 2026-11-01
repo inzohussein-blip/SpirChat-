@@ -117,7 +117,7 @@ export function Chats({ peer, setPeer }: { peer: string | null; setPeer: (id: st
                 <strong>
                   {title(key)} {!isGroup(key) && app.verified.has(key) && '✅'}
                 </strong>
-                <span class="preview-text">{last ? last.text || '📷' : ''}</span>
+                <span class="preview-text">{last ? last.text || (last.audio ? '🎙' : '📷') : ''}</span>
                 {last && <time>{ago(last.ts)}</time>}
               </button>
             </li>
@@ -125,6 +125,51 @@ export function Chats({ peer, setPeer }: { peer: string | null; setPeer: (id: st
         })}
       </ul>
     </div>
+  );
+}
+
+const MAX_VOICE_SECONDS = 60;
+
+/** Records a short low-bitrate voice note. Needs a secure context (the app, or https). */
+function VoiceButton({ onDone }: { onDone: (dataUrl: string) => void }) {
+  const [rec, setRec] = useState<MediaRecorder | null>(null);
+  if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) return null;
+  const start = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'].find((m) =>
+      MediaRecorder.isTypeSupported(m),
+    );
+    const r = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 12_000 });
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => chunks.push(e.data);
+    r.onstop = () => {
+      stream.getTracks().forEach((tr) => tr.stop());
+      const blob = new Blob(chunks, { type: r.mimeType });
+      if (!blob.size || blob.size > 150_000) return;
+      const reader = new FileReader();
+      reader.onload = () => onDone(String(reader.result));
+      reader.readAsDataURL(blob);
+    };
+    r.start();
+    setRec(r);
+    setTimeout(() => r.state === 'recording' && r.stop(), MAX_VOICE_SECONDS * 1000);
+  };
+  return (
+    <button
+      type="button"
+      class={rec ? 'recording' : ''}
+      title={rec ? t('stopRecord') : t('record')}
+      onClick={() => {
+        if (rec) {
+          rec.stop();
+          setRec(null);
+        } else {
+          void start().catch(() => setRec(null));
+        }
+      }}
+    >
+      {rec ? '⏹' : '🎙'}
+    </button>
   );
 }
 
@@ -142,7 +187,7 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
 
   useEffect(() => end.current?.scrollIntoView(), [msgs.length]);
 
-  const send = (content: { text: string; image?: string }) =>
+  const send = (content: { text: string; image?: string; audio?: string }) =>
     group ? app.sendGroup(group.id, content) : app.sendDirect(peer, content);
 
   const sendImage = async (e: Event) => {
@@ -210,6 +255,7 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
           <div key={m.id} class={`bubble ${m.mine ? 'mine' : ''}`}>
             {group && !m.mine && <small>{app.nameOf(m.from)}</small>}
             {m.image && <img src={m.image} alt="" />}
+            {m.audio && <audio controls preload="none" src={m.audio} />}
             {m.text && <p>{m.text}</p>}
             <time>
               {ago(m.ts)} {m.exp - m.ts <= 7 * 86_400_000 && '⏱'} {m.mine && (app.atHub.has(m.id) ? '✓' : '🕓')}
@@ -236,6 +282,7 @@ function Conversation({ peer, onBack }: { peer: string; onBack: () => void }) {
           📷
           <input type="file" accept="image/*" hidden onChange={sendImage} />
         </label>
+        <VoiceButton onDone={(audio) => void send({ text: '', audio })} />
         <input value={text} maxLength={4000} placeholder={t('message')} onInput={(e) => setText(e.currentTarget.value)} />
         <button class="primary" disabled={busy}>
           {t('send')}

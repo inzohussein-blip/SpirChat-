@@ -171,7 +171,7 @@ test('area filter and blocking', async () => {
   await tab(baghdad, 1);
   await baghdad.waitForSelector('.chips');
   assert.equal(await baghdad.locator('article.post').count(), 0, 'Basra post hidden under "near me"');
-  await baghdad.click('.chip:not(.on)');
+  await baghdad.click('.chip:has-text("كل المناطق")');
   assert.equal(await baghdad.locator('article.post').count(), 1);
 
   baghdad.once('dialog', (d) => d.accept());
@@ -241,4 +241,45 @@ test('PIN lock, duress PIN, and a private group of three', async () => {
   await b.waitForSelector('.tabs');
   await tab(b, 3);
   assert.equal(await b.locator('.list li button:has-text("العائلة")').count(), 0);
+});
+
+test('crisis board: needs, offers, "I am safe", missing people, and voice notes', async () => {
+  const hub = await startHub('Crisis');
+  hubs.push(hub);
+  const a = await phone(hub.url);
+  await signUp(a, 'حسين');
+  await a.waitForSelector('.status-online');
+  await a.click('.safe-btn');
+  await a.waitForSelector('.safe-btn:disabled');
+
+  await a.click('.composer .chip:has-text("أحتاج")');
+  await a.selectOption('.composer select:not(.scope)', 'medicine');
+  await a.fill('.composer textarea', 'أنسولين لطفل');
+  await a.click('.composer button.primary');
+
+  await a.click('.composer .chip:has-text("مفقود")');
+  await a.fill('.composer input[maxlength="60"]', 'أحمد كريم');
+  await a.fill('.composer textarea', 'آخر مرة شوهد قرب الجسر');
+  await a.click('.composer button.primary');
+
+  const b = await phone(hub.url);
+  await signUp(b, 'مريم');
+  await b.waitForSelector('article.post .tag-need');
+  await b.click('.chips .chip:has-text("احتياجات ومساعدات")');
+  assert.equal(await b.locator('article.post').count(), 1);
+  assert.match((await b.textContent('article.post .tag'))!, /دواء/);
+  await b.click('.chips .chip:has-text("بخير / مفقودون")');
+  assert.equal(await b.locator('article.post').count(), 2);
+  await b.waitForSelector('.tag-missing:has-text("أحمد كريم")');
+
+  // Voice note with Chromium's fake microphone (localhost counts as a secure context).
+  await b.click('.chips .chip:has-text("الكل")');
+  await b.click('article.post .author');
+  await b.click('button[title="تسجيل صوتي"]');
+  await new Promise((r) => setTimeout(r, 1500));
+  await b.click('button[title="إيقاف وإرسال"]');
+  await b.waitForSelector('.bubble.mine audio');
+  await tab(a, 3);
+  await a.click('.list li button');
+  await a.waitForSelector('.bubble audio');
 });

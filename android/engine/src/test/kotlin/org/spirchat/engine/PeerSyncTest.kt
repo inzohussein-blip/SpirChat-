@@ -42,13 +42,24 @@ class PeerSyncTest {
     }
 
     @Test
-    fun newEnvelopesRelayAcrossAChainOfPhones() {
+    fun publicEnvelopesRelayAcrossAChainOfPhones() {
+        val (a, b, c) = List(3) { Engine(MemoryStore()) }
+        link(a, b)
+        link(b, c)
+        val sos = fx.obj("sos")!!
+        assertIs<Accept.Added>(a.accept(sos, null))
+        assertTrue(c.store.contains(sos.str("id")!!), "sos relayed a -> b -> c")
+    }
+
+    @Test
+    fun privateMessagesAreNotPassedOnByRelayingPhones() {
         val (a, b, c) = List(3) { Engine(MemoryStore()) }
         link(a, b)
         link(b, c)
         val dm = fx.obj("dm")!!
         assertIs<Accept.Added>(a.accept(dm, null))
-        assertTrue(c.store.contains(dm.str("id")!!), "dm relayed a -> b -> c")
+        assertTrue(b.store.contains(dm.str("id")!!), "author hands it to b")
+        assertTrue(!c.store.contains(dm.str("id")!!), "b got it from a phone, so it waits for a hub or the recipient")
     }
 
     @Test

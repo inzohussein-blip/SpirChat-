@@ -29,6 +29,7 @@ import {
   openDirect,
   priorityOf,
   type ProfileBody,
+  type PostTag,
   type SignedKind,
   summarize,
   validateEnvelope,
@@ -325,7 +326,7 @@ class AppState {
     return g.id;
   }
 
-  async sendGroup(groupId: string, content: { text: string; image?: string }) {
+  async sendGroup(groupId: string, content: { text: string; image?: string; audio?: string }) {
     const g = this.groups.get(groupId);
     if (!this.me || !g) throw new Error('unknown group');
     const ttl = this.ttls[`g:${groupId}`] || undefined;
@@ -351,7 +352,18 @@ class AppState {
   private ingestGroup(env: Envelope, g: GroupInvite) {
     const m = openGroupMessage(g, env);
     if (!m || !this.me || m.from === this.me.id) return;
-    this.messages.set(env.id, { from: m.from, to: g.id, ts: m.ts, text: m.text, image: m.image, id: env.id, mine: false, exp: env.exp, group: g.id });
+    this.messages.set(env.id, {
+      from: m.from,
+      to: g.id,
+      ts: m.ts,
+      text: m.text,
+      image: m.image,
+      audio: m.audio,
+      id: env.id,
+      mine: false,
+      exp: env.exp,
+      group: g.id,
+    });
   }
 
   backupCode(): string {
@@ -413,7 +425,7 @@ class AppState {
     return this.publish(createSigned(this.me, kind, body));
   }
 
-  async sendDirect(to: string, content: { text: string; image?: string; invite?: GroupInvite }) {
+  async sendDirect(to: string, content: { text: string; image?: string; audio?: string; invite?: GroupInvite }) {
     if (!this.me) throw new Error('no identity');
     const env = createDirect(this.me, to, content, { prekey: this.prekeyOf(to), ttl: this.ttls[to] || undefined });
     if (content.invite) return this.publish(env);
@@ -444,9 +456,9 @@ class AppState {
     return scope === 'gov' ? this.area.split('/')[0] : this.area;
   }
 
-  async publishPost(text: string, image: Compressed | null, scope: Scope) {
+  async publishPost(text: string, image: Compressed | null, scope: Scope, tag?: PostTag) {
     const area = this.areaFor(scope);
-    const body: BodyByKind['post'] = { text, ...(area ? { area } : {}) };
+    const body: BodyByKind['post'] = { text, ...(area ? { area } : {}), ...(tag ? { tag } : {}) };
     if (image) {
       body.media = await saveMedia(image.bytes, image.mime);
       body.thumb = image.thumb;

@@ -1,12 +1,39 @@
 import { useEffect, useState } from 'preact/hooks';
-import { areaOf, type PostBody, type SosBody } from '@spirchat/protocol';
-import { ago, t } from '../lib/i18n.ts';
+import { areaOf, NEED_CATEGORIES, type NeedCategory, type PostBody, type PostTag, type SosBody } from '@spirchat/protocol';
+import { ago, type Key, t } from '../lib/i18n.ts';
 import { type Compressed, compressImage } from '../lib/image.ts';
 import { fetchMedia, localMedia } from '../lib/media.ts';
 import { app, type Scope, useApp } from '../lib/state.ts';
 
+type PostKind = 'post' | 'need' | 'offer' | 'missing';
+
+const CAT_ICON: Record<NeedCategory, string> = {
+  medicine: '💊',
+  food: '🍞',
+  water: '💧',
+  power: '⚡',
+  transport: '🚗',
+  shelter: '🏠',
+  other: '📦',
+};
+
+export function tagLabel(tag: PostTag): string {
+  switch (tag.type) {
+    case 'need':
+    case 'offer':
+      return `${tag.type === 'need' ? '🙏' : '🤝'} ${t(tag.type)} · ${CAT_ICON[tag.cat]} ${t(`cat_${tag.cat}` as Key)}`;
+    case 'safe':
+      return `✅ ${t('imSafe')}`;
+    case 'missing':
+      return `🔎 ${t('missing')}: ${tag.name}`;
+  }
+}
+
 function Composer() {
   const app = useApp();
+  const [kind, setKind] = useState<PostKind>('post');
+  const [cat, setCat] = useState<NeedCategory>('medicine');
+  const [missingName, setMissingName] = useState('');
   const [text, setText] = useState('');
   const [img, setImg] = useState<Compressed | null>(null);
   const [scope, setScope] = useState<Scope>('gov');
@@ -32,8 +59,15 @@ function Composer() {
     if (!text.trim() && !img) return;
     setBusy(true);
     try {
-      await app.publishPost(text.trim(), img, scope);
+      const tag: PostTag | undefined =
+        kind === 'need' || kind === 'offer'
+          ? { type: kind, cat }
+          : kind === 'missing'
+            ? { type: 'missing', name: missingName.trim() }
+            : undefined;
+      await app.publishPost(text.trim(), img, scope, tag);
       setText('');
+      setMissingName('');
       setImg(null);
     } catch (err) {
       setError((err as Error).message);
@@ -44,6 +78,25 @@ function Composer() {
 
   return (
     <form class="card composer" onSubmit={submit}>
+      <div class="chips">
+        {(['post', 'need', 'offer', 'missing'] as const).map((k) => (
+          <button type="button" key={k} class={kind === k ? 'chip on' : 'chip'} onClick={() => setKind(k)}>
+            {t(k === 'post' ? 'postKind' : k)}
+          </button>
+        ))}
+      </div>
+      {(kind === 'need' || kind === 'offer') && (
+        <select value={cat} onChange={(e) => setCat(e.currentTarget.value as NeedCategory)}>
+          {NEED_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {CAT_ICON[c]} {t(`cat_${c}` as Key)}
+            </option>
+          ))}
+        </select>
+      )}
+      {kind === 'missing' && (
+        <input value={missingName} maxLength={60} required placeholder={t('missingName')} onInput={(e) => setMissingName(e.currentTarget.value)} />
+      )}
       <textarea
         value={text}
         maxLength={2000}
@@ -65,7 +118,7 @@ function Composer() {
             <option value="all">{t('scopeAll')}</option>
           </select>
         )}
-        <button class="primary" disabled={busy || (!text.trim() && !img)}>
+        <button class="primary" disabled={busy || (!text.trim() && !img) || (kind === 'missing' && !missingName.trim())}>
           {busy ? t('sending') : t('post')}
         </button>
       </div>
@@ -140,13 +193,23 @@ function AuthorMenu({ id, onOpenChat }: { id: string; onOpenChat: (id: string) =
   );
 }
 
+type Board = 'all' | 'help' | 'people';
+
 export function Feed({ onOpenChat }: { onOpenChat: (id: string) => void }) {
   const app = useApp();
   const [nearOnly, setNearOnly] = useState(true);
+  const [board, setBoard] = useState<Board>('all');
+  const [safeSent, setSafeSent] = useState(false);
   const sos = app.ofKind('sos').filter((e) => app.nearMe(e)).slice(0, 5);
   const posts = app
     .ofKind('post')
     .filter((e) => !nearOnly || app.nearMe(e))
+    .filter((e) => {
+      const tag = (e.body as PostBody).tag?.type;
+      if (board === 'help') return tag === 'need' || tag === 'offer';
+      if (board === 'people') return tag === 'safe' || tag === 'missing';
+      return true;
+    })
     .slice(0, 200);
   return (
     <div class="feed">
@@ -169,7 +232,24 @@ export function Feed({ onOpenChat }: { onOpenChat: (id: string) => void }) {
           })}
         </section>
       )}
+      <button
+        class="safe-btn wide"
+        disabled={safeSent}
+        onClick={async () => {
+          await app.publishPost('', null, 'gov', { type: 'safe' });
+          setSafeSent(true);
+        }}
+      >
+        ✅ {safeSent ? t('safeSent') : t('imSafeButton')}
+      </button>
       <Composer />
+      <div class="chips">
+        {(['all', 'help', 'people'] as const).map((b) => (
+          <button key={b} class={board === b ? 'chip on' : 'chip'} onClick={() => setBoard(b)}>
+            {t(b === 'all' ? 'boardAll' : b === 'help' ? 'boardHelp' : 'boardPeople')}
+          </button>
+        ))}
+      </div>
       {app.area && (
         <div class="chips">
           <button class={nearOnly ? 'chip on' : 'chip'} onClick={() => setNearOnly(true)}>
@@ -194,6 +274,7 @@ export function Feed({ onOpenChat }: { onOpenChat: (id: string) => void }) {
                 {ago(e.ts)}
               </time>
             </header>
+            {b.tag && <p class={`tag tag-${b.tag.type}`}>{tagLabel(b.tag)}</p>}
             {b.text && <p class="text">{b.text}</p>}
             <PostImage body={b} />
           </article>

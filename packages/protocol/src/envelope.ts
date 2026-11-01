@@ -74,8 +74,21 @@ export interface MediaRef {
   mime: 'image/webp' | 'image/jpeg';
 }
 
+export const NEED_CATEGORIES = ['medicine', 'food', 'water', 'power', 'transport', 'shelter', 'other'] as const;
+export type NeedCategory = (typeof NEED_CATEGORIES)[number];
+
+/**
+ * Structured crisis posts: a request or offer of help, an "I'm safe" check-in, or a missing
+ * person notice. They are ordinary posts (signed, area-scoped, rate-limited) with a label.
+ */
+export type PostTag =
+  | { type: 'need' | 'offer'; cat: NeedCategory }
+  | { type: 'safe' }
+  | { type: 'missing'; name: string };
+
 export interface PostBody {
   text: string;
+  tag?: PostTag;
   /** Inline data: URL of a compressed image (v1 posts; new posts use `media`). */
   image?: string;
   /** Full image, fetched on demand by its hash. */
@@ -145,6 +158,8 @@ export interface DirectMessage {
   ts: number;
   text: string;
   image?: string;
+  /** Voice note as a data: URL (Opus, ~12 kbit/s). */
+  audio?: string;
   invite?: GroupInvite;
 }
 
@@ -154,6 +169,7 @@ export interface GroupMessage {
   ts: number;
   text: string;
   image?: string;
+  audio?: string;
 }
 
 type Unsealed = Omit<Envelope, 'nonce' | 'id'>;
@@ -206,8 +222,8 @@ export function createSigned<K extends SignedKind>(
 }
 
 function directPayload(m: DirectMessage) {
-  const { from, to, ts, text, image, invite } = m;
-  return utf8(canonicalJson({ from, to, ts, text, image, invite }));
+  const { from, to, ts, text, image, audio, invite } = m;
+  return utf8(canonicalJson({ from, to, ts, text, image, audio, invite }));
 }
 
 /**
@@ -217,7 +233,7 @@ function directPayload(m: DirectMessage) {
 export function createDirect(
   identity: Identity,
   recipientId: string,
-  content: { text: string; image?: string; invite?: GroupInvite },
+  content: { text: string; image?: string; audio?: string; invite?: GroupInvite },
   opts: CreateOptions & { prekey?: string } = {},
 ): Envelope {
   const t = times('dm', opts);
@@ -253,6 +269,7 @@ export function openDirect(identity: Identity, env: Envelope, prekeys: string[] 
     if (inner.to !== identity.id || inner.ts !== env.ts) return null;
     const msg: DirectMessage = { from: inner.from, to: inner.to, ts: inner.ts, text: inner.text };
     if (typeof inner.image === 'string') msg.image = inner.image;
+    if (typeof inner.audio === 'string' && inner.audio.startsWith('data:audio/')) msg.audio = inner.audio;
     if (inner.invite !== undefined) {
       if (!isInvite(inner.invite)) return null;
       msg.invite = inner.invite;
@@ -265,15 +282,15 @@ export function openDirect(identity: Identity, env: Envelope, prekeys: string[] 
 }
 
 function groupPayload(m: GroupMessage) {
-  const { from, group, ts, text, image } = m;
-  return utf8(canonicalJson({ from, group, ts, text, image }));
+  const { from, group, ts, text, image, audio } = m;
+  return utf8(canonicalJson({ from, group, ts, text, image, audio }));
 }
 
 /** A message to a private group, sealed with the group key and signed by the sender. */
 export function createGroupMessage(
   identity: Identity,
   group: { id: string; key: string },
-  content: { text: string; image?: string },
+  content: { text: string; image?: string; audio?: string },
   opts: CreateOptions = {},
 ): Envelope {
   const t = times('dm', opts);
@@ -292,6 +309,7 @@ export function openGroupMessage(group: { id: string; key: string }, env: Envelo
     if (inner.group !== group.id || inner.ts !== env.ts || typeof inner.text !== 'string') return null;
     const msg: GroupMessage = { from: inner.from, group: inner.group, ts: inner.ts, text: inner.text };
     if (typeof inner.image === 'string') msg.image = inner.image;
+    if (typeof inner.audio === 'string' && inner.audio.startsWith('data:audio/')) msg.audio = inner.audio;
     if (!verify(msg.from, groupPayload(msg), inner.sig)) return null;
     return msg;
   } catch {
@@ -320,6 +338,23 @@ function isMedia(v: unknown): v is MediaRef {
     (m.size as number) <= MAX_MEDIA_BYTES &&
     (m.mime === 'image/webp' || m.mime === 'image/jpeg')
   );
+}
+
+function isPostTag(v: unknown): v is PostTag {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const t = v as Record<string, unknown>;
+  const keys = Object.keys(t);
+  switch (t.type) {
+    case 'need':
+    case 'offer':
+      return keys.length === 2 && NEED_CATEGORIES.includes(t.cat as NeedCategory);
+    case 'safe':
+      return keys.length === 1;
+    case 'missing':
+      return keys.length === 2 && isStr(t.name, 60, 1);
+    default:
+      return false;
+  }
 }
 
 /** Whether two areas overlap (one contains the other); envelopes without an area go everywhere. */
@@ -362,7 +397,8 @@ export function validateBody(kind: Kind, body: unknown): string | null {
       if (b.thumb !== undefined && !isDataUrl(b.thumb, 12_000)) return 'post.thumb invalid';
       if (b.media !== undefined && !isMedia(b.media)) return 'post.media invalid';
       if (b.area !== undefined && !isArea(b.area)) return 'post.area invalid';
-      if (!b.text && !b.image && !b.media) return 'post is empty';
+      if (b.tag !== undefined && !isPostTag(b.tag)) return 'post.tag invalid';
+      if (!b.text && !b.image && !b.media && (b.tag as PostTag | undefined)?.type !== 'safe') return 'post is empty';
       return null;
     case 'room':
       if (!isStr(b.room, 32, 1) || !/^[\p{L}\p{N}_-]+$/u.test(b.room)) return 'room name invalid';

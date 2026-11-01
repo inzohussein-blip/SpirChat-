@@ -27,6 +27,11 @@ const valid: Record<string, Envelope> = {
   sosNegative: createSigned(alice, 'sos', { text: 'x', loc: { lat: -0.001, lon: 0 } }, opts),
   alert: createSigned(alice, 'alert', { title: 't', text: '', level: 'danger' }, opts),
   dm: createDirect(alice, bob.id, { text: 'سري' }, opts),
+  mediaPost: createSigned(alice, 'post', { text: '', media: { id: 'B'.repeat(43), size: 1000, mime: 'image/webp' }, area: 'baghdad/الكرادة' }, opts),
+  safePost: createSigned(alice, 'post', { text: '', tag: { type: 'safe' } }, opts),
+  needPost: createSigned(alice, 'post', { text: 'insulin', tag: { type: 'need', cat: 'medicine' }, area: 'basra' }, opts),
+  missingPost: createSigned(alice, 'post', { text: 'last seen', tag: { type: 'missing', name: 'أحمد' } }, opts),
+  roomArea: createSigned(alice, 'room', { room: 'r', text: 'x', area: 'nineveh' }, opts),
 };
 
 const tamper = (e: Envelope, patch: Partial<Envelope>): Envelope => ({ ...e, ...patch });
@@ -39,6 +44,21 @@ const invalid: Record<string, unknown> = {
   extraField: { ...valid.post!, extra: 1 },
   badVersion: tamper(valid.post!, { v: 2 }),
   dmWithBody: { ...valid.dm!, body: {} },
+  ...Object.fromEntries(
+    (
+      [
+        ['badMedia', { text: 'x', media: { id: 'short', size: 1, mime: 'image/webp' } }],
+        ['hugeMedia', { text: 'x', media: { id: 'B'.repeat(43), size: 5_000_000, mime: 'image/webp' } }],
+        ['badArea', { text: 'x', area: 'not an area!' }],
+        ['badTag', { text: 'x', tag: { type: 'need', cat: 'weapons' } }],
+        ['emptyPost', { text: '' }],
+      ] as const
+    ).map(([name, body]) => {
+      // Sign valid bodies, then swap in the invalid one: only validation should reject it.
+      const e = createSigned(alice, 'post', { text: 'placeholder' }, opts);
+      return [name, { ...e, body }];
+    }),
+  ),
   badProfileKeys: (() => {
     const e = createSigned(alice, 'profile', { name: 'a' }, opts);
     return { ...e, body: { name: 'a', keys: [{ k: 'short', until: 1 }] } };

@@ -70,6 +70,33 @@ object Protocol {
     private fun isStr(v: Json?, max: Int, min: Int = 0) = v is Json.Str && v.value.length in min..max
     private fun isDataUrl(v: Json?, max: Int) = isStr(v, max) && DATA_URL.containsMatchIn((v as Json.Str).value)
 
+    private val AREA = Regex("^[\\p{L}\\p{N}_-]{1,32}(/[\\p{L}\\p{N}_-]{1,32}){0,3}$")
+    private val B64U_43 = Regex("^[A-Za-z0-9_-]{43}$")
+    const val MAX_MEDIA_BYTES = 1_000_000
+    private val NEED_CATEGORIES = setOf("medicine", "food", "water", "power", "transport", "shelter", "other")
+
+    private fun isArea(v: Json?) = isStr(v, 100, 1) && AREA.matches((v as Json.Str).value)
+
+    private fun isMedia(v: Json?): Boolean {
+        val m = v as? Json.Obj ?: return false
+        val size = m.long("size")
+        return m.fields.keys.all { it in setOf("id", "size", "mime") } &&
+            m.str("id")?.let(B64U_43::matches) == true &&
+            size != null && size in 1..MAX_MEDIA_BYTES.toLong() &&
+            m.str("mime") in setOf("image/webp", "image/jpeg")
+    }
+
+    private fun isPostTag(v: Json?): Boolean {
+        val t = v as? Json.Obj ?: return false
+        val n = t.fields.size
+        return when (t.str("type")) {
+            "need", "offer" -> n == 2 && t.str("cat") in NEED_CATEGORIES
+            "safe" -> n == 1
+            "missing" -> n == 2 && isStr(t["name"], 60, 1)
+            else -> false
+        }
+    }
+
     private fun validKeys(v: Json?): Boolean {
         val arr = (v as? Json.Arr)?.items ?: return false
         return arr.size <= 3 && arr.all { k ->
@@ -91,12 +118,17 @@ object Protocol {
                 !isStr(b["text"], 2000) -> "post.text too long"
                 b["image"] != null && !isDataUrl(b["image"], 240_000) -> "post.image invalid"
                 b["thumb"] != null && !isDataUrl(b["thumb"], 12_000) -> "post.thumb invalid"
-                b.str("text").isNullOrEmpty() && b["image"] == null -> "post is empty"
+                b["media"] != null && !isMedia(b["media"]) -> "post.media invalid"
+                b["area"] != null && !isArea(b["area"]) -> "post.area invalid"
+                b["tag"] != null && !isPostTag(b["tag"]) -> "post.tag invalid"
+                b.str("text").isNullOrEmpty() && b["image"] == null && b["media"] == null &&
+                    (b["tag"] as? Json.Obj)?.str("type") != "safe" -> "post is empty"
                 else -> null
             }
             "room" -> when {
                 !isStr(b["room"], 32, 1) || !ROOM_NAME.matches(b.str("room")!!) -> "room name invalid"
                 !isStr(b["text"], 2000, 1) -> "room.text must be 1-2000 chars"
+                b["area"] != null && !isArea(b["area"]) -> "room.area invalid"
                 else -> null
             }
             "alert" -> when {
@@ -106,6 +138,7 @@ object Protocol {
             }
             "sos" -> when {
                 !isStr(b["text"], 280, 1) -> "sos.text must be 1-280 chars"
+                b["area"] != null && !isArea(b["area"]) -> "sos.area invalid"
                 b["loc"] == null -> null
                 else -> {
                     val loc = b["loc"] as? Json.Obj
