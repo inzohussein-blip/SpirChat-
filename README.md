@@ -54,18 +54,27 @@ npm run dev:web        # الواجهة مع إعادة التحميل التل�
 
 ## التوثيق
 
-- [خطة المشروع والمعمارية](docs/PLAN.md)
+- [خطة التطوير الشامل وحالتها](docs/ROADMAP.md)
+- [خطة المشروع والمعمارية الأصلية](docs/PLAN.md)
 - [مواصفات البروتوكول](docs/protocol.md)
+- [نموذج التهديدات: ما نحميه وما لا نحميه](docs/threat-model.md)
+- [نتائج محاكاة الشبكة](docs/simulation-ar.md)
 - [دليل تركيب محطة على Raspberry Pi](docs/hub-setup-ar.md)
+- [المحطة الخفيفة لراوترات OpenWrt](hub-go/README-ar.md)
+- [تشغيل محطة إنترنت](deploy/internet/README-ar.md)
 
 ## هيكل المستودع
 
 ```
 packages/protocol   مكتبة البروتوكول المشتركة: الهويات، التشفير، الظروف، إثبات العمل
 hub                 خادم المحطة: Node.js و SQLite و WebSocket
-web                 تطبيق الويب: Preact و Vite
-android             تطبيق أندرويد (Kotlin): يحمل الواجهة نفسها ويضيف الاتصال المباشر بين الهواتف
-deploy/raspberry-pi سكربت التركيب وخدمة systemd
+hub-go              محطة خفيفة بلغة Go لراوترات OpenWrt (البروتوكول نفسه)
+web                 تطبيق الويب: Preact و Vite (العربية والإنجليزية والكردية)
+android/engine      محرك المزامنة بلغة Kotlin (مختبر على أي حاسوب)
+android/app         تطبيق أندرويد: الواجهة نفسها + المحرك + الاتصال المباشر في الخلفية
+simulator           محاكي الشبكة لمقارنة طرق التوجيه
+e2e                 اختبارات شاملة بمتصفح حقيقي ومحطات حقيقية
+deploy              Raspberry Pi، ومحطة إنترنت (Docker + HTTPS)
 ```
 
 ## تنبيه

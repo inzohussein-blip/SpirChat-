@@ -22,6 +22,35 @@ jobs:
       - name: End-to-end tests (real hubs, real browser)
         run: npm run e2e
 
+  hub-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: hub-go/go.sum
+      - name: Go hub unit tests (shared vectors)
+        working-directory: hub-go
+        run: go vet ./... && go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Build Go hub
+        working-directory: hub-go
+        run: go build -o spirchat-hub . && ./build.sh
+      - name: End-to-end tests against the Go hub
+        run: HUB_BIN=$PWD/hub-go/spirchat-hub npm run e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpirChat-hub-go
+          path: hub-go/dist/
+          if-no-files-found: error
+
   android:
     runs-on: ubuntu-latest
     env:

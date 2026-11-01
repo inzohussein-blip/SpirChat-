@@ -4,3 +4,5 @@ dist/
 *.db-*
 data/
 .DS_Store
+hub-go/dist/
+hub-go/spirchat-hub

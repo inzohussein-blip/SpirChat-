@@ -655,7 +655,13 @@ export const app = new AppState();
 
 /** Re-render the calling component whenever app state changes. */
 export function useApp(): AppState {
-  const [, setV] = useState(0);
-  useEffect(() => app.subscribe(() => setV(app.version)), []);
+  const [, setV] = useState(app.version);
+  useEffect(() => {
+    const unsubscribe = app.subscribe(() => setV(app.version));
+    // Changes between the first render and this effect would otherwise be missed
+    // (e.g. a hub coming online right after load), leaving the screen stale.
+    setV(app.version);
+    return unsubscribe;
+  }, []);
   return app;
 }

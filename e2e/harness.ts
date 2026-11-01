@@ -27,9 +27,22 @@ export interface TestHub {
 export async function startHub(name: string, env: Record<string, string> = {}): Promise<TestHub> {
   const port = await freePort();
   const dataDir = mkdtempSync(join(tmpdir(), 'spirchat-e2e-'));
-  const proc = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'hub/src/main.ts'], {
+  // HUB_BIN runs the same tests against another hub implementation (e.g. the Go hub).
+  const bin = process.env.HUB_BIN;
+  const [cmd, args] = bin
+    ? [bin, []]
+    : [process.execPath, ['--disable-warning=ExperimentalWarning', 'hub/src/main.ts']];
+  const proc = spawn(cmd, args, {
     cwd: repo,
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', HUB_NAME: name, DATA_DIR: dataDir, ...env },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      HUB_NAME: name,
+      DATA_DIR: dataDir,
+      WEB_DIR: join(repo, 'web', 'dist'),
+      ...env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
