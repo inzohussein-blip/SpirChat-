@@ -171,7 +171,9 @@ object Core : Mesh.Listener {
         // while mobile data stays the default route for internet hubs.
         wifiClient = OkHttpClient.Builder()
             .socketFactory(network.socketFactory)
-            .dns(Dns { host -> network.getAllByName(host).toList() })
+            .dns(object : Dns {
+                override fun lookup(hostname: String) = network.getAllByName(hostname).toList()
+            })
             .connectTimeout(5, TimeUnit.SECONDS)
             .pingInterval(30, TimeUnit.SECONDS)
             .build()
